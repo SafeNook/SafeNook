@@ -1,5 +1,8 @@
 # SafeNook
 
+[![CI](https://github.com/SafeNook/safenook/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/SafeNook/safenook/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/SafeNook/safenook)](LICENSE)
+
 **A safe little nook for your secrets.** SafeNook is a local-first, cross-platform secrets vault for developers: passwords, SSH keys, `.env` sets, small files and notes — encrypted on your machine and driven from the terminal with the `nook` command.
 
 > [!WARNING]

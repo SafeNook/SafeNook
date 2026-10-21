@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in SafeNook doesn't work as expected.
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        > [!CAUTION]
+        > **Never paste real passwords, keys, master passwords, recovery codes or vault files into this issue.** Issues are public. Replace secrets with placeholders such as `<redacted>` and use a throwaway test vault to reproduce.
+
+        If the problem is a security vulnerability, don't open an issue: [report it privately](https://github.com/SafeNook/safenook/security/advisories/new) instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `nook --version`, or the commit SHA you built from.
+      placeholder: 0.1.0-alpha+2428ca0d0a6eb22e2c999b2db4df9917665eb379
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os-details
+    attributes:
+      label: OS version and architecture
+      placeholder: Windows 11 24H2 x64, macOS 15 arm64, Ubuntu 24.04 x64…
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands you ran. Redact any secrets.
+      placeholder: |
+        1. nook gen --length 32
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead, including error messages and exit codes. Redact any secrets.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help, such as terminal, shell, or whether it is a native AOT build or `dotnet run`.
+
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Confirmation
+      options:
+        - label: This issue contains no real passwords, keys or other secrets.
+          required: true
