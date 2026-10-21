@@ -74,7 +74,7 @@
 | # | Вопрос | Статус | ADR |
 |---|---|---|---|
 | D-1 | Имя проекта и команды | **Принято:** SafeNook, команда `nook` | [0001](adr/0001-name.md) |
-| D-2 | Библиотека для Argon2id и Ed25519 | Предложено: NSec (libsodium); ждёт спайка F-4 с Native AOT | [0002](adr/0002-crypto-library.md) |
+| D-2 | Библиотека для Argon2id и Ed25519 | **Принято:** NSec (libsodium), статическая линковка; Argon2id только с p=1 | [0002](adr/0002-crypto-library.md) |
 | D-3 | AEAD-шифр | **Принято:** AES-256-GCM из BCL | [0003](adr/0003-aead-cipher.md) |
 | D-4 | Один файл или каталог | **Принято:** каталог, файл на запись | [0004](adr/0004-vault-layout.md) |
 | D-5 | Консольная UI-библиотека | **Принято:** Spectre.Console; Terminal.Gui v2 — только при необходимости полноэкранного TUI | [0005](adr/0005-console-ui.md) |
@@ -238,7 +238,7 @@ vault/
     {
       "id": "pwd-1",
       "type": "password",
-      "kdf": { "alg": "argon2id", "memoryKiB": 65536, "iterations": 3, "parallelism": 4, "salt": "base64…" },
+      "kdf": { "alg": "argon2id", "memoryKiB": 65536, "iterations": 3, "parallelism": 1, "salt": "base64…" },
       "wrappedKey": "base64(nonce‖ciphertext‖tag)"
     },
     { "id": "rec-1", "type": "recovery", "kdf": { "alg": "hkdf-sha256", "salt": "…" }, "wrappedKey": "…" }
@@ -248,6 +248,7 @@ vault/
 
 - AAD при обёртке VK = `vaultId ‖ slotId ‖ formatVersion` — слот нельзя переставить в другое хранилище.
 - Параметры Argon2id калибруются на `init` (цель ~0.5–1 с на машине пользователя, не ниже `m=64 MiB, t=3`) и хранятся в слоте → их можно поднимать позже командой `nook passwd --rekey`.
+- Калибровка: целевое время достигается сначала увеличением памяти, затем числа проходов; потоков всегда 1 (libsodium поддерживает только `p=1`, соль ровно 16 байт — см. [ADR 0002](adr/0002-crypto-library.md)).
 
 ### Файл записи `<uuid>.item`
 
@@ -333,11 +334,11 @@ AAD = vaultId ‖ itemId
 - [x] F-2 Структура решения (`src/`, `tests/`), `global.json` с .NET 10, `Directory.Build.props`, `Directory.Packages.props`, `SafeNook.slnx`.
 - [x] F-3 CI в GitHub Actions: build + test на Windows, Linux, macOS, AOT smoke-публикация. Dependabot.
 - [ ] F-3a CodeQL, защита ветки `main`, обязательный зелёный CI для merge.
-- [ ] F-4 Спайк: NSec + Native AOT на трёх ОС (результат → ADR 0002).
+- [x] F-4 Спайк: NSec + Native AOT на трёх ОС (результат → ADR 0002).
 
 **Ядро**
 
-- [ ] F-5 `IAeadCipher` (AES-GCM), `IKeyDerivation` (Argon2id), HKDF. Тесты на известных векторах (RFC 9106 для Argon2, NIST для GCM, RFC 5869 для HKDF).
+- [ ] F-5 `IAeadCipher` (AES-GCM), `IKeyDerivation` (Argon2id), HKDF. Тесты на известных векторах (libsodium `pwhash_argon2id` для Argon2 — RFC 9106 требует p=4, см. ADR 0002; NIST для GCM, RFC 5869 для HKDF).
 - [ ] F-6 `VaultHeader`, key slots, wrap/unwrap VK, калибровка Argon2id.
 - [ ] F-7 `FileSystemVaultStore`: атомарная запись, `.backup/`, межпроцессная блокировка, права файлов.
 - [ ] F-8 Модели записей (§6) + source-generated JSON-контекст.
