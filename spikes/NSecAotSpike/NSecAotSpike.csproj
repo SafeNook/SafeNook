@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Spike F-4: does NSec.Cryptography (libsodium) work under native AOT on every target RID?
+    Not part of SafeNook.slnx. See README.md and docs/adr/0002-crypto-library.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>nsec-aot-spike</AssemblyName>
+    <RootNamespace>SafeNook.Spikes.NSecAot</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NSec.Cryptography" />
+  </ItemGroup>
+
+  <!--
+    Optional static linking: pass -p:LibsodiumStaticLib=/path/to/libsodium.a.
+    DirectPInvoke resolves NSec's [LibraryImport("libsodium")] calls at link time against the
+    archive, so the binary needs no libsodium.so/.dylib next to it.
+  -->
+  <ItemGroup Condition="'$(LibsodiumStaticLib)' != ''">
+    <DirectPInvoke Include="libsodium" />
+    <NativeLibrary Include="$(LibsodiumStaticLib)" />
+  </ItemGroup>
+
+  <!-- With static linking, don't copy the shared libsodium from the NuGet package into the output. -->
+  <Target Name="DropSharedLibsodium" AfterTargets="ResolvePackageAssets" Condition="'$(LibsodiumStaticLib)' != ''">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" />
+    </ItemGroup>
+  </Target>
+
+</Project>
