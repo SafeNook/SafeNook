@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>nook</AssemblyName>
+    <RootNamespace>SafeNook.Cli</RootNamespace>
+    <Description>The `nook` command-line interface for SafeNook.</Description>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SafeNook.Core\SafeNook.Core.csproj" />
+  </ItemGroup>
+
+</Project>

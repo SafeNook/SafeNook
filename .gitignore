@@ -1,0 +1,30 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+*.nupkg
+*.snupkg
+
+# Test results and coverage
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# IDEs and editors
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local vaults created while testing — never commit real or test vaults
+*.vault/
+.safenook/

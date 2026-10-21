@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release
+
+      - name: Publish native AOT
+        run: dotnet publish src/SafeNook.Cli --configuration Release --runtime ${{ matrix.rid }} --output publish
+
+      - name: Smoke test the native binary
+        shell: bash
+        run: |
+          exe="./publish/nook"
+          [[ "$RUNNER_OS" == "Windows" ]] && exe="./publish/nook.exe"
+
+          password=$("$exe" gen --length 32 | tr -d '\r')
+          echo "Generated a password of ${#password} characters"
+          [[ ${#password} -eq 32 ]]
+
+          # Invalid input must fail with a non-zero exit code
+          if "$exe" gen --length 3; then
+            echo "Expected 'nook gen --length 3' to fail"
+            exit 1
+          fi
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nook-${{ matrix.rid }}
+          path: |
+            publish/nook
+            publish/nook.exe
+          if-no-files-found: error
+          retention-days: 7
