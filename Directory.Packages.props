@@ -8,6 +8,11 @@
     <PackageVersion Include="System.CommandLine" Version="2.0.13" />
   </ItemGroup>
 
+  <ItemGroup Label="Spikes">
+    <!-- F-4: spikes/NSecAotSpike only; see docs/adr/0002-crypto-library.md -->
+    <PackageVersion Include="NSec.Cryptography" Version="26.4.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

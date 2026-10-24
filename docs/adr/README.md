@@ -8,7 +8,7 @@
 | # | Решение | Статус |
 |---|---|---|
 | [0001](0001-name.md) | Имя проекта SafeNook, команда `nook` | Принято |
-| [0002](0002-crypto-library.md) | NSec (libsodium) для Argon2id и Ed25519 | Предложено |
+| [0002](0002-crypto-library.md) | NSec (libsodium) для Argon2id и Ed25519 | Принято |
 | [0003](0003-aead-cipher.md) | AES-256-GCM как AEAD | Принято |
 | [0004](0004-vault-layout.md) | Хранилище как каталог с файлом на запись | Принято |
 | [0005](0005-console-ui.md) | Spectre.Console для консольного UI | Принято |
