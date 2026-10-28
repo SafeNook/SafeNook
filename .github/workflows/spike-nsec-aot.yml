@@ -96,7 +96,7 @@ jobs:
 
       - name: Download verified libsodium sources
         if: matrix.linkage == 'static'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: libsodium-sources
           path: sodium-src
