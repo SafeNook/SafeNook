@@ -7,8 +7,10 @@ updates:
       interval: weekly
     groups:
       test-dependencies:
+        update-types:
+          - minor
+          - patch
         patterns:
-          - "Microsoft.NET.Test.Sdk"
           - "xunit*"
     commit-message:
       prefix: "build(deps)"
