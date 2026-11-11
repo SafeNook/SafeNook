@@ -7,6 +7,9 @@ on:
   pull_request:
     paths:
       - spikes/**
+      - Directory.Build.props
+      - Directory.Packages.props
+      - global.json
       - .github/workflows/spike-nsec-aot.yml
 
 permissions:
@@ -96,7 +99,7 @@ jobs:
 
       - name: Download verified libsodium sources
         if: matrix.linkage == 'static'
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: libsodium-sources
           path: sodium-src
