@@ -12,5 +12,20 @@
 | [0003](0003-aead-cipher.md) | AES-256-GCM как AEAD | Принято |
 | [0004](0004-vault-layout.md) | Хранилище как каталог с файлом на запись | Принято |
 | [0005](0005-console-ui.md) | Spectre.Console для консольного UI | Принято |
+| [0006](0006-product-scope.md) | Самостоятельный local-first vault и приоритет developer secrets | Принято |
 
 Шаблон — [`template.md`](template.md).
+
+## SN-002 — предложенные решения, 2026-11-12
+
+| # | Решение | Статус |
+|---|---|---|
+| [0007](0007-recovery-key-slots.md) | Независимые password/recovery slots, обязательный recovery | Предложено (Proposed) |
+| [0008](0008-generation-commit.md) | COW версии, manifest и единый root commit | Предложено (Proposed) |
+| [0009](0009-streaming-aead-profile.md) | AES-GCM-HKDF Streaming профиль для вложений | Предложено (Proposed) |
+
+[Спецификация](../vault-format.md), [модель угроз](../threat-model.md),
+[реестр решений владельца](../SN-002-DECISIONS.md) и [план проверок](../SN-002-VERIFICATION.md).
+ADR 0008/0009 описывают предполагаемые изменения деталей ADR 0004/0003; до утверждения
+принятые ADR не заменены. Обязательность recovery в M1 подтверждена владельцем, конкретный
+протокол ADR 0007 — ещё предложение.

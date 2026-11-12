@@ -1,632 +1,191 @@
 # SafeNook Roadmap
 
-> Статус: рабочий план, октябрь 2026.
-> Направление: **CLI/TUI-хранилище секретов для разработчиков → собственная экосистема.** Сначала локальное хранилище паролей, SSH-ключей, `.env`-наборов, файлов и заметок с удобным CLI и синхронизацией через git. Затем собственный self-hosted сервер и GUI-клиенты (десктоп + мобильные) на общем ядре.
->
-> SafeNook — новый проект, а не продолжение [PasswordGeneratorCLI](https://github.com/algmironov/PasswordGeneratorCLI). Обратной совместимости с ним нет; записи переносятся одноразовым импортом.
+> SN-001, 11 ноября 2026. Сверено с локальным HEAD `6904096d875510ae9117012c9df53fb9b6e0bf55`.
+> SafeNook — самостоятельное local-first open-source хранилище секретов для разработчиков.
+> Подтверждённый scope: [ADR 0006](adr/0006-product-scope.md).
+> Разбиение на milestones и номера будущих версий ниже — **предложение на согласование**, не утверждённые релизы.
+> SN-002 и реализация следующего этапа не начинаются до согласования SN-001.
 
----
+## 1. Источники и правила актуальности
 
-## Содержание
+Приоритет: новые решения владельца → принятые ADR → проверяемый код и конфигурация → исторические планы.
+Наличие кода, наличие теста и успешный запуск — разные виды свидетельств.
+Галочки ниже означают наличие проверенного локального результата, а не успешный CI или выпуск продукта.
 
-1. [Цели и не-цели](#1-цели-и-не-цели)
-2. [Уроки PasswordGeneratorCLI](#2-уроки-passwordgeneratorcli)
-3. [Решения](#3-решения)
-4. [Целевая архитектура](#4-целевая-архитектура)
-5. [Формат хранилища и криптография](#5-формат-хранилища-и-криптография)
-6. [Модель данных](#6-модель-данных)
-7. [Этапы](#7-этапы)
-   - [Этап 0. Фундамент](#этап-0-фундамент)
-   - [Этап 1. CLI и интерактивный режим](#этап-1-cli-и-интерактивный-режим)
-   - [Этап 2. Дистрибуция](#этап-2-дистрибуция)
-   - [Этап 3. Секреты для разработчиков и фоновый агент](#этап-3-секреты-для-разработчиков-и-фоновый-агент)
-   - [Этап 4. Синхронизация и self-hosted сервер](#этап-4-синхронизация-и-self-hosted-сервер)
-   - [Этап 5. GUI: десктоп и мобильные](#этап-5-gui-десктоп-и-мобильные)
-   - [Организационные задачи](#организационные-задачи)
-8. [Сквозные требования](#8-сквозные-требования)
-9. [Версии и вехи](#9-версии-и-вехи)
-10. [Риски](#10-риски)
+Сверены README, SECURITY, CONTRIBUTING, CLAUDE, ADR 0001–0005, src, tests, .github, спайк NSec.
+Восстановленная история прочитана в Obsidian Vault `C:\Users\algmi\Центр знаний\projects`:
+`20-Projects/safenook/{Overview,Requirements,Architecture,Decisions,Implementation-History,Historical-state,Current-state,Changes-since-Claude,Open-questions}.md`
+и `40-Context/Codex/safenook.md`. Это срез переписки до 21 октября, подготовленный 9 ноября; он не доказывает текущее состояние реализации.
+Исторические файлы Vault сохранены без изменений.
 
----
+Локальная история содержит спайк PR #5 (`0ed223c`) и обновление зависимостей/MTP PR #10 (`6904096`).
+Статус GitHub Actions, релизов, настроек организации и защиты ветки отдельно не проверялся. Fetch не выполнялся.
 
-## 1. Цели и не-цели
+## 2. Подтверждённое направление
 
-**Цели**
+- Local-first, open-source, .NET, Native AOT, Windows/macOS/Linux; криптографическое ядро независимо от UI.
+- Импорт, совместимость, миграция и чтение формата PasswordGeneratorCLI полностью исключены.
+- Хранение SSH-ключей, age-идентичностей и небольших файлов приближается к первой практически полезной версии.
+- Сервер и GUI не реализуются до стабилизации локального ядра.
+- Направление фирменного стиля — **Vault Monogram**; готовность графических ассетов этим не установлена.
+- Команда — `nook`; название пакетов — `safenook` (ADR 0001).
+- NSec/libsodium для Argon2id и Ed25519 (ADR 0002); AES-256-GCM из BCL (ADR 0003);
+  каталог с файлом на запись (ADR 0004); Spectre.Console как выбранное направление UI (ADR 0005).
 
-- Безопасное локальное хранилище с современной криптографией и версионируемым форматом.
-- Типизированные записи: логины, заметки, SSH-ключи, `.env`-наборы, небольшие файлы, TOTP.
-- Удобный CLI для скриптов и приятный интерактивный режим для людей.
-- Один бинарник без установленного .NET, пакеты для основных менеджеров.
-- Синхронизация между устройствами: сначала git/папка, затем свой zero-knowledge сервер.
-- GUI-клиенты на общем ядре.
+Историческое происхождение: опыт PasswordGeneratorCLI выявил необходимость разделения ядра/UI,
+аутентифицированного шифрования, версионирования формата, атомарной записи и безопасного вывода.
+Это объясняет происхождение проекта, но не создаёт обязательств по переносу старых данных.
 
-**Не-цели (по крайней мере до этапа 5)**
+## 3. Что есть в репозитории
 
-- Расширение для браузера и автозаполнение в браузере.
-- Командный/организационный шаринг секретов.
-- Совместимость с форматами других менеджеров на уровне хранилища (только импорт/экспорт).
+| Задача / область | Статус по локальным файлам | Свидетельство и границы |
+|---|---|---|
+| F-1: ADR | [x] ADR 0001–0005 приняты | `docs/adr/`; принятие не равно реализации |
+| F-2: bootstrap | [x] Структура .NET 10 присутствует | `SafeNook.slnx`, `global.json`, общие props, Core/Cli/tests |
+| F-3: CI | [x] Конфигурация присутствует | `ci.yml`: build, MTP, CLI и AOT проверки на linux-x64, win-x64, osx-arm64; успешность не перепроверялась |
+| F-3a: CodeQL / защита ветки | Не завершено / частично непроверяемо локально | CodeQL workflow отсутствует; rulesets требуют отдельной проверки владельцем |
+| F-4: NSec/AOT | [x] Спайк и ADR присутствуют | Семь RID × shared/static в `spike-nsec-aot.yml`; результаты в ADR исторические, не новый прогон |
+| F-5–F-9: crypto, header, store, модели, session | Не реализованы в src | Core содержит только `Generation/`; NSec подключён только к спайку |
+| F-10: генератор | Частично | `PasswordGenerator.cs`: длина 8–128, классы, исключения, оценка энтропии; passphrase нет |
+| F-12: формат и модель угроз | Не реализованы | `docs/vault-format.md` и `docs/threat-model.md` отсутствуют; создать до кода vault |
+| C-1/C-2/C-5: CLI | Частично | Только `gen`, help/version; `tests/Test-Cli.ps1`; vault-команд и JSON-контракта нет |
+| I-1–I-4, C-3/C-4 | Не реализованы | Нет интерактивной сессии, Spectre и clipboard |
+| R-1–R-5 | Частично только CI AOT | Нет release workflow и packaging; спайк не является поставкой |
+| SSH/age/файлы/agent/sync/server/GUI | Не реализованы | Соответствующих проектов и сервисов нет |
+| O-1 | Исторически подтверждено, remote не проверен | URL и локальная история присутствуют; не новая проверка GitHub |
 
----
+В тестах Core присутствуют 16 случаев с учётом InlineData; это статический подсчёт, не результат запуска.
+CLI регрессии запускаются конфигурацией CI для managed и AOT.
+Фактические версии: System.CommandLine **3.0.0**, xunit.v3 **4.0.3** с MTP,
+NSec **26.4.0** только в спайке, libsodium **1.0.22** в spike workflow.
+Версия сборки `0.1.0-alpha` не означает готовность milestone 0.1.
 
-## 2. Уроки PasswordGeneratorCLI
+Из трёх исторических замечаний после спайка: проверка подписи и SHA-256 обоих архивов libsodium
+есть в workflow; отдельного правила совместного обновления NSec/libsodium и независимой проверки
+Argon2id другой реализацией не обнаружено. Векторы из самой libsodium присутствуют.
 
-Аудит версии 2.1.1 определил требования к SafeNook с первого дня:
+## 4. Архитектура и порядок зависимостей
 
-| Что было | Что делаем |
-|---|---|
-| Один класс смешивал крипто, файлы, логику и консоль | `SafeNook.Core` без единой ссылки на консоль; UI — тонкие фронтенды |
-| AES-CBC без аутентификации | Только AEAD (AES-256-GCM) |
-| PBKDF2, 10 000 итераций | Argon2id с калибровкой и параметрами в заголовке |
-| Нет версии формата | Magic + версия во всех файлах |
-| Неатомарная запись | temp-файл → `fsync` → atomic rename + бэкапы |
-| Очистка буфера в fire-and-forget задаче, которая умирала вместе с процессом | Очистка — ответственность живого процесса (интерактивный режим, агент, отсоединённый helper) |
-| Пароль печатался в консоль | Секреты не выводятся без явного `--reveal` |
-| Генератор молча обрезал длину, не гарантировал классы символов | Явная политика генерации с валидацией и гарантиями |
-| `Console.ReadKey` не работал без TTY | Отдельные пути ввода для TTY и скриптов |
-| Нет тестов и CI | CI на трёх ОС с первого коммита |
+Существующая зависимость: `Cli → Core`. Core не ссылается на Console, clipboard, сеть или UI.
+Целевые границы: ядро хранит правила и контракты; файловый адаптер отвечает за ОС, блокировки и права;
+CLI преобразует ввод/вывод; Agent и Sync добавляются отдельно, не становятся обязательными для локального CLI.
 
----
+Порядок работ:
 
-## 3. Решения
+1. Модель угроз и спецификация → криптопримитивы/KDF → заголовок и key slots.
+2. Формат записей + файловые гарантии → session/CRUD → CLI локального vault.
+3. Типы SSH/age и защищённые вложения → команды хранения/извлечения и round-trip проверки.
+4. Стабильная сессия → интерактивность/clipboard; отдельный IPC ADR → агент/ssh-agent.
+5. Версии объектов, tombstones, конфликты и восстановление → sync.
+6. Стабильное локальное ядро + отдельные ADR → сервер и GUI.
 
-Каждое решение фиксируется ADR в [`docs/adr/`](adr/).
+SSH-хранение не требует ssh-agent; хранение age-идентичности не требует реализации age encryption,
+плагина или сервера. Файлы не должны ждать фонового агента.
+GUI не обязан ждать сервера, но оба обязаны ждать стабильного локального ядра.
+Детали будущих проектов и API пока не являются контрактом.
 
-| # | Вопрос | Статус | ADR |
+ADR 0002–0004 сохраняются. В частности, выбор STREAM/GCM для blobs не отменён.
+Точная кодировка AAD, управление nonce, транзакции нескольких файлов, recovery и формат age-записи
+ещё требуют спецификации. Старые JSON/C# эскизы не являются утверждённым wire format.
+Полный перечень пробелов и альтернатив: [SN-001: вопросы перед SN-002](SN-001-ARCHITECTURE-QUESTIONS.md).
+
+## 5. Предлагаемые milestones и версии
+
+Все новые milestones пока открыты. Номера — ориентиры без дат и изменения VersionPrefix.
+До 1.0 остаётся предупреждение pre-alpha: не хранить настоящие секреты; формат может меняться без миграций.
+«Практически полезный» в 0.2 означает сквозной сценарий на тестовых данных, а не заявление о production security.
+
+| Milestone | Версия-кандидат | Результат | Критерий готовности |
 |---|---|---|---|
-| D-1 | Имя проекта и команды | **Принято:** SafeNook, команда `nook` | [0001](adr/0001-name.md) |
-| D-2 | Библиотека для Argon2id и Ed25519 | **Принято:** NSec (libsodium), статическая линковка; Argon2id только с p=1 | [0002](adr/0002-crypto-library.md) |
-| D-3 | AEAD-шифр | **Принято:** AES-256-GCM из BCL | [0003](adr/0003-aead-cipher.md) |
-| D-4 | Один файл или каталог | **Принято:** каталог, файл на запись | [0004](adr/0004-vault-layout.md) |
-| D-5 | Консольная UI-библиотека | **Принято:** Spectre.Console; Terminal.Gui v2 — только при необходимости полноэкранного TUI | [0005](adr/0005-console-ui.md) |
-| D-6 | GUI-фреймворк | Предложено: Avalonia | этап 5 |
-| D-7 | Лицензия сервера | Открыто: MIT как у клиента или AGPL | этап 4 |
+| M0: архитектурный контракт | Без релиза | Согласовать SN-001; затем SN-002: модель угроз, спецификация, необходимые ADR | Закрыты блокирующие Q-01–Q-09; есть проверяемые инварианты, границы формата и план негативных тестов |
+| M1: локальное ядро | 0.1 | Crypto, header/slots, store, модели, CRUD и минимальный CLI для проверки | Init/unlock/CRUD/reopen, смена пароля, резервное восстановление; тесты подмены и сбоев; build/test/AOT на трёх ОС |
+| M2: минимально полезный developer vault | 0.2 | Login/note + SSH-ключи, age-идентичности и небольшие файлы; команды add/list/show/edit/delete/extract | Сквозное сохранение/повторное открытие/извлечение всех типов, точный round-trip ключей и файлов; безопасные права и отказ при подмене; без агента и сети |
+| M3: повседневный CLI | 0.3 | I-1–I-4, clipboard, история, passphrase, улучшение скриптового режима | Автоблокировка по бездействию, в том числе при открытом prompt, отсутствие утечек, TTY/non-TTY тесты; README с проверенными примерами |
+| M4: стабильная локальная поставка | 0.4 → 1.0 | Release pipeline, установка, документация, аудит локального ядра | Матрица поставки проверена на чистых системах; восстановление проверено; формат/CLI зафиксированы и есть политика будущих миграций; security review до 1.0 |
+| M5: агент и developer workflows | 1.1, уточнить | IPC, ssh-agent, env/run, TOTP; расширение SSH/age | Авторизация локального клиента, lock/timeout/sign-confirmation, негативные IPC-тесты; секреты не остаются в файлах по умолчанию |
+| M6: синхронизация | 1.2, уточнить | Git/папка, общий движок конфликтов | Два устройства, concurrent edit/delete, восстановление после прерывания, конфликт заголовка/слотов; документированы пределы защиты от rollback |
+| M7: сервер | Не закреплена | Self-hosted encrypted-object backend | Отдельные threat model/auth ADR, отзыв устройств, quotas, backup, integration tests; только после M4 и проекта протокола sync |
+| M8: GUI | Не закреплена | Сначала desktop, mobile после исследования | Стабильный Core API, safe reveal/lock, платформенная проверка keychain/биометрии; фреймворк выбирается отдельным ADR |
 
----
+### Работы M0–M2
 
-## 4. Целевая архитектура
+- [ ] F-12: модель угроз и формат **до** F-5–F-9. Разобрать Q-01–Q-09 и согласовать требуемые ADR.
+- [ ] F-5: AEAD, Argon2id, HKDF; known-answer, tamper, bounds и negative tests; независимая проверка Argon2id.
+- [ ] F-6: header, password/recovery slots, wrap/unwrap, ограниченная калибровка KDF; точная политика recovery по Q-03.
+- [ ] F-7: атомарная запись, lock, owner-only permissions, backup/restore; crash consistency нескольких файлов.
+- [ ] F-8: source-generated JSON, строгий разбор версии/типов/размеров; модель SSH/age/file.
+- [ ] F-9: session, CRUD, очистка ключей, история/tombstones по согласованной модели.
+- [ ] C-1/C-2/C-5: минимальный CLI и его тесты вместе с ядром; единичный процесс без обязательного агента.
+- [ ] S-1/S-2 (часть): хранение и извлечение SSH; генерацию и поддержку всех OpenSSH-вариантов уточнить в Q-07.
+- [ ] A-1 (новая): хранение age-идентичностей, ограничения поддерживаемых форматов и безопасное извлечение по Q-07.
+- [ ] E-1: небольшие файлы; лимит и blob-протокол по Q-05; отказ без частичного plaintext output при ошибке.
+- [ ] R-1 (сквозная): проверять AOT с появлением crypto/serialization/UI, а не только в конце.
 
-### Структура решения
+### CLI и сквозные требования
 
-```
-/
-├─ src/
-│  ├─ SafeNook.Core/          # модели, крипто, формат, сервисы. БЕЗ Console, БЕЗ UI
-│  ├─ SafeNook.Core.Sync/     # движок синхронизации (git, HTTP-клиент сервера)   (этап 4)
-│  ├─ SafeNook.Agent/         # фоновый агент: сессия, ssh-agent, буфер обмена    (этап 3)
-│  ├─ SafeNook.Cli/           # команда `nook`: System.CommandLine 2.0 + Spectre.Console
-│  ├─ SafeNook.Server/        # ASP.NET Core minimal API + SQLite                 (этап 4)
-│  └─ SafeNook.Desktop/       # Avalonia, затем Android/iOS                        (этап 5)
-├─ tests/
-│  ├─ SafeNook.Core.Tests/
-│  ├─ SafeNook.Cli.Tests/
-│  └─ SafeNook.Server.Tests/
-├─ docs/
-│  ├─ ROADMAP.md
-│  ├─ adr/
-│  ├─ vault-format.md         # спецификация формата
-│  └─ threat-model.md
-├─ packaging/                 # nfpm, homebrew, scoop, winget, aur
-├─ Directory.Build.props      # общие настройки, Nullable, анализаторы, TreatWarningsAsErrors
-├─ Directory.Packages.props   # central package management
-├─ global.json                # закреплён SDK .NET 10
-└─ SafeNook.slnx
-```
+Будущий минимальный CLI: init, add, ls, show, edit, rm, passwd, encrypted backup/restore,
+операции SSH/age/file. Точные имена и флаги согласовать в спецификации публичного контракта.
+`nook gen` уже явно запрашивает генерацию в stdout; для сохранённых секретов нужен явный reveal/export.
+Мастер-пароль не передавать аргументом командной строки; TTY и скриптовый ввод проектируются отдельно.
+Текущие коды в ExitCodes.cs: 0 — успех, 1 — ошибка/неверные аргументы, 2 — неоднозначность/не найдено,
+3 — неверный пароль, 4 — блокировка. Для vault-команд они ещё не реализованы.
 
-### Правила зависимостей
+- Никаких секретов в логах, исключениях, ToString и диагностике. Безопасный вывод относится также к JSON.
+- Ключи и пароль — ограниченное время жизни и очистка буферов; ограничения GC/строк честно описать.
+- Только принятые криптопримитивы. AOT JSON — source generation; warnings не подавлять.
+- Негативные проверки: неверный пароль, tamper, перестановка объектов, malformed/oversized input,
+  чрезмерные параметры KDF, interrupted write, competing writers, backup restore.
+- MTP/xUnit и CLI regression checks сохраняются; crypto требует известных векторов и fuzz-проверок парсеров.
+- Windows/macOS/Linux — обязательные проверки; семь RID поставки из ADR 0002 проверяются до обещания поддержки.
+- Поставка: статическая libsodium, проверка происхождения, совместное обновление NSec/libsodium, license notices.
+- Threat model обновляется при появлении файлов, агента и сети. Внешнее ревью рекомендовано до 1.0.
+- README/SECURITY сохраняют pre-alpha предупреждение до выполнения критериев стабильного выпуска.
 
-```
-Cli ──► Agent ──► Core.Sync ──► Core
-Desktop ─────────► Core.Sync ──► Core
-Server  ─────────► (только контракты DTO, общие с Core.Sync)
-```
+## 6. Соответствие старого и нового плана
 
-- `Core` не знает о консоли, файловой системе пользователя (только через абстракции), буфере обмена и сети.
-- Сервер **никогда** не ссылается на криптографию расшифровки.
-- Все проекты, кроме сервера и GUI, обязаны быть AOT-совместимыми (`IsAotCompatible`).
+Идентификаторы сохраняются для трассировки; удалённые не переиспользуются.
 
-### Основные абстракции `SafeNook.Core`
-
-```csharp
-// Хранилище байтов. Реализации: FileSystemVaultStore, InMemoryVaultStore (тесты)
-public interface IVaultStore
-{
-    Task<VaultHeader?> ReadHeaderAsync(CancellationToken ct);
-    Task WriteHeaderAsync(VaultHeader header, CancellationToken ct);       // атомарно
-    IAsyncEnumerable<EncryptedObject> ReadItemsAsync(CancellationToken ct);
-    Task WriteItemAsync(EncryptedObject item, CancellationToken ct);       // атомарно
-    Task<IAsyncDisposable> AcquireLockAsync(CancellationToken ct);         // межпроцессная блокировка
-}
-
-public interface IKeyDerivation   // Argon2id
-{
-    void DeriveKey(ReadOnlySpan<byte> password, KdfParameters p, Span<byte> output);
-}
-
-public interface IAeadCipher      // AES-256-GCM
-{
-    byte[] Encrypt(ReadOnlySpan<byte> key, ReadOnlySpan<byte> plaintext, ReadOnlySpan<byte> aad);
-    byte[] Decrypt(ReadOnlySpan<byte> key, ReadOnlySpan<byte> envelope, ReadOnlySpan<byte> aad);
-}
-
-// Разблокированная сессия. Держит Vault Key, зануляет его в Dispose
-public sealed class VaultSession : IDisposable
-{
-    public IReadOnlyList<VaultItem> Items { get; }
-    public Task<VaultItem> AddAsync(VaultItem item, CancellationToken ct);
-    public Task UpdateAsync(VaultItem item, CancellationToken ct);   // кладёт старый пароль в историю
-    public Task DeleteAsync(Guid id, CancellationToken ct);          // tombstone, не физическое удаление
-    public IEnumerable<VaultItem> Search(string query);              // нечёткий поиск по имени, тегам, URL
-}
-
-public static class VaultOpener
-{
-    public static Task CreateAsync(IVaultStore store, ReadOnlyMemory<byte> masterPassword, ...);
-    public static Task<VaultSession> UnlockAsync(IVaultStore store, ReadOnlyMemory<byte> masterPassword, ...);
-}
-
-public interface IPasswordGenerator
-{
-    string Generate(PasswordPolicy policy);        // длина, классы, исключения, «без похожих символов»
-    string GeneratePassphrase(PassphrasePolicy p); // diceware, EFF wordlist
-    double EstimateEntropyBits(PasswordPolicy p);
-}
-
-public interface IClipboard   // реализация живёт в Cli/Agent, не в Core
-{
-    Task SetAsync(string text, CancellationToken ct);
-    Task ClearIfEqualsAsync(string expectedHash, CancellationToken ct);
-}
-```
-
----
-
-## 5. Формат хранилища и криптография
-
-Полная спецификация выносится в `docs/vault-format.md` (задача F-12). Здесь — суть.
-
-### Расположение
-
-| ОС | Данные | Конфиг |
+| Старые этапы / задачи | Новый этап | Изменение |
 |---|---|---|
-| Linux | `$XDG_DATA_HOME/safenook/` (`~/.local/share/safenook/`) | `$XDG_CONFIG_HOME/safenook/config.toml` |
-| macOS | `~/Library/Application Support/SafeNook/` | там же |
-| Windows | `%APPDATA%\SafeNook\` | там же |
-
-Переопределение: `--vault <path>` и переменная окружения `SAFENOOK_VAULT`. Поддерживаются несколько хранилищ (личное, рабочее).
-
-Права: каталог `0700`, файлы `0600` (на Windows — ACL только для текущего пользователя).
-
-### Структура каталога
-
-```
-vault/
-├─ vault.json            # заголовок (открытый текст, целостность защищена)
-├─ items/
-│  └─ <uuid>.item        # одна зашифрованная запись
-├─ blobs/
-│  └─ <uuid>.blob        # зашифрованные вложения (потоковое шифрование)
-├─ .lock                 # межпроцессная блокировка
-└─ .backup/              # N последних версий изменённых файлов
-```
-
-### Иерархия ключей
-
-```
-мастер-пароль ──Argon2id(salt, m, t, p)──► KEK (256 бит)
-                                            │ unwrap (AES-GCM)
-                                            ▼
-                         Vault Key (VK, случайные 256 бит, генерируется при init)
-                                            │ HKDF-SHA256 (info = "item" / "blob" / "auth")
-                       ┌────────────────────┼────────────────────┐
-                       ▼                    ▼                    ▼
-                   Item Key             Blob Key           Auth Key (этап 4)
-```
-
-- Смена мастер-пароля = перешифровать только VK, записи не трогаются.
-- **Key slots**: VK может быть обёрнут несколькими способами — пароль, ключ восстановления (показывается при `init`), позже — биометрия/OS keychain на устройстве.
-
-### `vault.json`
-
-```json
-{
-  "format": "safenook-vault",
-  "formatVersion": 1,
-  "vaultId": "7c3e…",
-  "createdAt": "2026-11-01T10:00:00Z",
-  "cipher": "AES-256-GCM",
-  "keySlots": [
-    {
-      "id": "pwd-1",
-      "type": "password",
-      "kdf": { "alg": "argon2id", "memoryKiB": 65536, "iterations": 3, "parallelism": 1, "salt": "base64…" },
-      "wrappedKey": "base64(nonce‖ciphertext‖tag)"
-    },
-    { "id": "rec-1", "type": "recovery", "kdf": { "alg": "hkdf-sha256", "salt": "…" }, "wrappedKey": "…" }
-  ]
-}
-```
-
-- AAD при обёртке VK = `vaultId ‖ slotId ‖ formatVersion` — слот нельзя переставить в другое хранилище.
-- Параметры Argon2id калибруются на `init` (цель ~0.5–1 с на машине пользователя, не ниже `m=64 MiB, t=3`) и хранятся в слоте → их можно поднимать позже командой `nook passwd --rekey`.
-- Калибровка: целевое время достигается сначала увеличением памяти, затем числа проходов; потоков всегда 1 (libsodium поддерживает только `p=1`, соль ровно 16 байт — см. [ADR 0002](adr/0002-crypto-library.md)).
-
-### Файл записи `<uuid>.item`
-
-```
-magic "SNI1" (4) | version (1) | nonce (12) | ciphertext (…) | tag (16)
-AAD = vaultId ‖ itemId
-```
-
-- Внутри — JSON записи (см. §6), сериализация через **source-generated** `JsonSerializerContext` (обязательно для Native AOT).
-- Случайный 96-битный nonce на каждую запись файла. Лимит ~2³² шифрований на ключ недостижим для личного хранилища; при необходимости — ротация Item Key.
-
-### Вложения `<uuid>.blob`
-
-- Magic `SNB1`. Потоковое AEAD: чанки по 64 KiB, nonce = префикс ‖ номер чанка, флаг последнего чанка в AAD (конструкция STREAM). Защищает от обрезки и перестановки чанков.
-- Лимит размера по умолчанию 25 MiB, настраивается.
-
-### Надёжность записи
-
-1. Пишем во временный файл в том же каталоге.
-2. `fsync` файла.
-3. Атомарный `rename` поверх старого (на Windows — `File.Replace`).
-4. Старую версию кладём в `.backup/` (ротация, последние N).
-
-### Работа с секретами в памяти
-
-- Ключи — только `byte[]`/`Span<byte>`, после использования `CryptographicOperations.ZeroMemory`.
-- Мастер-пароль читается в `byte[]`, а не в `string`.
-- Ограничения .NET (строки для отображения, GC-копии) честно описываем в `threat-model.md`.
-
-### Импорт из PasswordGeneratorCLI
-
-- `nook import pwgen-v2 [PATH]` — по умолчанию ищет `~/.config/pwgen/storage.cpwgen` / `%APPDATA%\pwgen\storage.cpwgen`.
-- Расшифровка старым алгоритмом (AES-CBC + PBKDF2-SHA256, 10 000 итераций), перенос: Service → name, Login → username, Url → urls[0], Note → notes.
-- Код чтения старого формата изолирован в `Import/PwgenV2Reader`, только для чтения. Старый файл не изменяется.
-
----
-
-## 6. Модель данных
-
-Общие поля любой записи:
-
-```json
-{
-  "id": "uuid",
-  "type": "login | note | ssh-key | file | env",
-  "name": "GitHub",
-  "tags": ["work", "dev"],
-  "favorite": false,
-  "notes": "",
-  "createdAt": "…",
-  "updatedAt": "…",
-  "revision": 7,
-  "deleted": false,
-  "customFields": [{ "name": "PIN", "value": "1234", "hidden": true }],
-  "data": { /* зависит от типа */ }
-}
-```
-
-| Тип | `data` |
-|---|---|
-| `login` | `username`, `password`, `urls[]`, `totp` (otpauth URI), `passwordHistory[]` (`value`, `changedAt`) |
-| `note` | `body` (markdown) |
-| `ssh-key` | `keyType` (ed25519 / rsa / ecdsa), `privateKey` (OpenSSH), `publicKey`, `comment`, `agent` (`enabled`, `confirmOnUse`), `hosts[]` |
-| `file` | `blobId`, `fileName`, `size`, `sha256`, `mime` |
-| `env` | `variables[]` (`key`, `value`), `description` |
-
-- Удаление — tombstone (`deleted: true`), окончательная очистка через `nook purge` после N дней. Это нужно для синхронизации.
-- `revision` растёт при каждом изменении — основа для разрешения конфликтов.
-
----
-
-## 7. Этапы
-
-Формат задачи: `ID` — описание. Внутри этапа задачи идут примерно в порядке выполнения.
-
-### Этап 0. Фундамент
-
-Цель: ядро с форматом хранилища, покрытое тестами. Выпуск **0.1.0**.
-
-**Инфраструктура**
-
-- [x] F-1 Принять D-1, D-3, D-4, D-5, записать ADR. D-2 — после F-4.
-- [x] F-2 Структура решения (`src/`, `tests/`), `global.json` с .NET 10, `Directory.Build.props`, `Directory.Packages.props`, `SafeNook.slnx`.
-- [x] F-3 CI в GitHub Actions: build + test на Windows, Linux, macOS, AOT smoke-публикация. Dependabot.
-- [ ] F-3a CodeQL, защита ветки `main`, обязательный зелёный CI для merge.
-- [x] F-4 Спайк: NSec + Native AOT на трёх ОС (результат → ADR 0002).
-
-**Ядро**
-
-- [ ] F-5 `IAeadCipher` (AES-GCM), `IKeyDerivation` (Argon2id), HKDF. Тесты на известных векторах (libsodium `pwhash_argon2id` для Argon2 — RFC 9106 требует p=4, см. ADR 0002; NIST для GCM, RFC 5869 для HKDF).
-- [ ] F-6 `VaultHeader`, key slots, wrap/unwrap VK, калибровка Argon2id.
-- [ ] F-7 `FileSystemVaultStore`: атомарная запись, `.backup/`, межпроцессная блокировка, права файлов.
-- [ ] F-8 Модели записей (§6) + source-generated JSON-контекст.
-- [ ] F-9 `VaultSession`: CRUD, история паролей, tombstones, поиск.
-- [ ] F-10 `PasswordGenerator`: политика (длина 8–128, классы символов с гарантией каждого, исключение похожих `0O1lI`), passphrase по EFF wordlist, оценка энтропии.
-- [ ] F-11 `PwgenV2Reader` + импорт.
-- [ ] F-12 `docs/vault-format.md` и `docs/threat-model.md`.
-
-**Тесты (минимум)**
-
-- round-trip шифрования; неверный пароль; подмена одного байта в любом файле → ошибка; перестановка файла записи в другое хранилище → ошибка;
-- прерванная запись не повреждает хранилище;
-- импорт из PasswordGeneratorCLI на эталонном файле (сгенерировать старой версией и положить в `tests/fixtures`);
-- статистические тесты генератора (наличие классов, распределение);
-- fuzz-тест парсера заголовка и файлов записей.
-
-**Готово, когда:** ядро проходит тесты на трёх ОС, формат описан, AOT-спайк закрыт.
-
-### Этап 1. CLI и интерактивный режим
-
-Цель: выпуски **0.2** (команды) и **0.3** (интерактивный режим).
-
-#### Команды
-
-```
-nook                                   интерактивный режим (если TTY), иначе справка
-nook gen [-l 20] [--no-symbols] [--exclude-similar] [--passphrase --words 5] [--copy]
-nook init [--vault PATH]
-nook add login|note|ssh|file|env [--name ..] [--username ..] [--url ..] [--generate]
-nook ls [QUERY] [--type T] [--tag T] [--json]
-nook show QUERY [--reveal] [--field F] [--json]
-nook copy QUERY [--field password|username|totp|<custom>] [-t 30]
-nook edit QUERY
-nook rm QUERY                          (tombstone; purge — отдельно)
-nook history QUERY
-nook totp QUERY
-nook passwd [--rekey]                  смена мастер-пароля / параметров KDF
-nook import pwgen-v2|bitwarden|keepass-csv FILE
-nook export --encrypted FILE           (открытый экспорт — только с явным флагом и предупреждением)
-nook doctor                            слабые, повторяющиеся, старые пароли
-```
-
-- `QUERY` — нечёткий поиск. Если совпадений несколько: в TTY — выбор стрелками, без TTY — ошибка с кодом 2 и списком.
-
-#### Скриптовый режим
-
-- `--json` для всех команд чтения, стабильная схема вывода.
-- Мастер-пароль: TTY-prompt; `--password-stdin`; `SAFENOOK_PASSWORD_FILE`. Никогда — аргументом командной строки.
-- Коды выхода: `0` ок, `1` ошибка, `2` неоднозначность/не найдено, `3` неверный пароль, `4` хранилище заблокировано.
-- Уважать `NO_COLOR`, `--no-color`, отсутствие TTY.
-
-#### Буфер обмена
-
-- В интерактивном режиме — таймер внутри живого процесса.
-- В одноразовой команде: запускается отсоединённый дочерний процесс `nook __clip-clear --after 30 --hash <sha256>`, который очищает буфер **только если там всё ещё наш пароль** (сравнение хэша).
-- Linux: проверить X11 и Wayland (`wl-copy`), понятная ошибка, если утилит нет.
-
-#### Интерактивный режим
-
-```
-┌ SafeNook · personal ───────────────────── 🔓 автоблок через 4:52 ┐
-│ Поиск: git▌                                                       │
-│ › 🔑 GitHub            alex@example.com     github.com    work    │
-│   🔑 GitLab (work)     a.mironov            gitlab.corp   work    │
-│   🗝  github-deploy     ed25519                           dev     │
-└ ↑↓ выбор · Enter действия · / поиск · n новая · q выход ──────────┘
-```
-
-- [ ] I-1 Цикл: разблокировка → поиск с фильтрацией → меню действий записи (копировать пароль/логин/TOTP, показать, редактировать, удалить).
-- [ ] I-2 Автоблокировка по бездействию. Стандартные prompt'ы Spectre блокирующие → нужен свой цикл ввода с опросом `Console.KeyAvailable` и таймером. Технический риск, делать первым спайком этапа.
-- [ ] I-3 Мастера создания записей по типам с генерацией пароля «на месте».
-- [ ] I-4 Единая тема: цвета только через палитру Spectre, без жёстких фонов, проверка в светлой и тёмной теме; иконки типов с ASCII-фолбэком.
-
-#### Задачи
-
-- [ ] C-1 Слой команд как тонкая обёртка над `SafeNook.Core` — без логики в обработчиках.
-- [ ] C-2 Все команды из списка выше, кроме `import bitwarden|keepass-csv` и `doctor` (их можно в 0.4).
-- [ ] C-3 Буфер обмена (см. выше).
-- [ ] C-4 Интерактивный режим I-1 … I-4.
-- [ ] C-5 Тесты CLI: `Spectre.Console.Testing` + snapshot-тесты вывода, тесты кодов выхода и JSON-схемы.
-- [ ] C-6 README с GIF/asciinema.
-
-**Готово, когда:** вы перенесли свои записи импортом и пользуетесь `nook` каждый день вместо старой утилиты.
-
-### Этап 2. Дистрибуция
-
-Цель: выпуск **0.4**, затем **1.0** — установка одной командой без .NET на всех основных платформах.
-
-#### Сборка
-
-- Native AOT, `InvariantGlobalization`, trimming; без рефлексии (source-gen JSON, System.CommandLine 2.0 AOT-совместим).
-- Матрица: `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `linux-musl-x64`, `osx-arm64`, `osx-x64`. AOT собирается на родной ОС → матрица runner'ов GitHub Actions.
-
-#### Релизный pipeline (по тегу `v*`)
-
-1. Сборка и тесты на всех RID.
-2. Архивы `.tar.gz` / `.zip`, `SHA256SUMS`.
-3. Подпись: GitHub artifact attestations (Sigstore) и/или minisign.
-4. GitHub Release с changelog из `CHANGELOG.md`.
-5. Публикация в каналы ниже.
-
-#### Каналы
-
-| Канал | Что сделать |
-|---|---|
-| Homebrew | tap `SafeNook/homebrew-tap`, формула обновляется из CI |
-| Scoop | bucket `SafeNook/scoop-bucket` |
-| winget | манифест `SafeNook.SafeNook`, PR в `microsoft/winget-pkgs` |
-| AUR | пакет `safenook-bin` (команда `nook`) |
-| deb / rpm | пакет `safenook` через `nfpm`, позже — свой apt/rpm-репозиторий |
-| install.sh / install.ps1 | `curl -fsSL https://safenook.dev/install.sh \| sh` с проверкой SHA256 и подписи |
-| NuGet dotnet tool | `SafeNook.Cli` как дополнительный канал |
-
-Пакеты называются `safenook`, бинарник — `nook`. Перед публикацией проверить, что `nook` не конфликтует с бинарниками в репозиториях дистрибутивов.
-
-- [ ] R-1 AOT-сборка проходит без предупреждений trimming.
-- [ ] R-2 Release workflow.
-- [ ] R-3 Homebrew + Scoop + install-скрипты.
-- [ ] R-4 winget + AUR + deb/rpm.
-- [ ] R-5 Проверка «чистой установки» на свежих VM/контейнерах в CI.
-
-**Готово, когда:** на чистой машине любой ОС ставится одной командой и работает без .NET. После этого — **1.0**: формат хранилища заморожен, дальнейшие изменения только с миграциями.
-
-### Этап 3. Секреты для разработчиков и фоновый агент
-
-Цель: выпуск **1.1** — то, что делает SafeNook инструментом разработчика.
-
-#### Фоновый агент
-
-Один долгоживущий процесс на пользователя, который:
-
-- держит разблокированный VK с автоблокировкой (по таймеру, по команде `nook lock`, позже — при сне/блокировке экрана);
-- обслуживает CLI через локальный сокет → `nook unlock` один раз, дальше команды без пароля;
-- работает как **ssh-agent**;
-- отвечает за очистку буфера обмена.
-
-Транспорт и защита:
-
-- Linux/macOS: Unix socket в `$XDG_RUNTIME_DIR` с правами `0600`, проверка UID собеседника (`SO_PEERCRED` / `getpeereid`).
-- Windows: named pipe с ACL текущего пользователя.
-- Команды: `nook unlock [--timeout 15m]`, `nook lock`, `nook agent status|start|stop`, автозапуск через systemd user unit / launchd / Task Scheduler (опционально).
-
-#### SSH-ключи
-
-- [ ] S-1 `nook ssh gen [--type ed25519|rsa] --name …`, `nook ssh import FILE`, `nook ssh pub QUERY`, `nook ssh export QUERY` (с предупреждением).
-- [ ] S-2 Парсинг/запись формата OpenSSH private key. Импорт зашифрованных ключей требует `bcrypt_pbkdf` — реализовать или запрашивать расшифрованный ключ.
-- [ ] S-3 Протокол ssh-agent: `REQUEST_IDENTITIES`, `SIGN_REQUEST` для ed25519 (NSec), `rsa-sha2-256/512`, ECDSA (встроенные в .NET).
-- [ ] S-4 Windows: pipe `\\.\pipe\openssh-ssh-agent` (конфликтует со службой Windows OpenSSH agent — понятная диагностика).
-- [ ] S-5 Подтверждение использования ключа (`confirmOnUse`) через prompt/уведомление.
-
-#### Файлы, `.env`, TOTP
-
-- [ ] E-1 `nook file add PATH [--name …]`, `nook file get QUERY -o PATH` (создаётся с правами `0600`), потоковое шифрование blob'ов.
-- [ ] E-2 `nook env set NAME KEY=VALUE…`, `nook env import .env`, `nook env show`.
-- [ ] E-3 `nook run --env NAME [--env NAME2] -- команда args…` — секреты передаются только в окружение дочернего процесса.
-- [ ] E-4 TOTP (RFC 6238): `nook totp QUERY`, копирование кода, импорт из `otpauth://` URI и QR-картинки (опционально).
-
-**Готово, когда:** можно хранить SSH-ключ в SafeNook и делать `git push` без файла ключа на диске; `nook run` подставляет секреты в окружение.
-
-### Этап 4. Синхронизация и self-hosted сервер
-
-#### 4a. Синхронизация через git или папку (выпуск 1.2)
-
-Каталог с файлом на запись (D-4) делает это почти бесплатным.
-
-- [ ] Y-1 `nook sync init git REMOTE` — инициализирует git в каталоге хранилища, `.gitignore` для `.lock` и `.backup/`.
-- [ ] Y-2 `nook sync` = `commit` → `pull --rebase` → разрешение конфликтов → `push`. Используем установленный `git` (без LibGit2Sharp, чтобы не тащить нативные зависимости).
-- [ ] Y-3 Разрешение конфликтов на уровне записей в `SafeNook.Core.Sync`: расшифровать обе версии, побеждает бо́льшая `revision`, при равенстве — более поздний `updatedAt`; проигравшая версия пароля уходит в `passwordHistory`, для остальных полей — запись-копия «(конфликт)».
-- [ ] Y-4 Режим «папка» для Syncthing/Dropbox/Nextcloud: обнаружение и разрешение файлов-конфликтов, которые создают эти сервисы.
-
-#### 4b. SafeNook Server (выпуск 1.3)
-
-**Принцип zero-knowledge:** сервер хранит только зашифрованные объекты и не может их расшифровать. Компрометация сервера раскрывает только метаданные (количество и размеры объектов, время изменений).
-
-**Аутентификация**
-
-- Клиент выводит `AuthKey = HKDF(KEK, "auth")` и отправляет его серверу; сервер хранит `Argon2id(AuthKey)`. Ни KEK, ни VK сервер не видит.
-- Устройства регистрируются, получают access token (короткий) + refresh token (отзывной). Список устройств и отзыв — в CLI.
-- Регистрация только по приглашению (команда администратора на сервере), rate limiting на логин. 2FA — позже.
-
-**API v1**
-
-```
-POST   /api/v1/auth/prelogin        → kdf-параметры и salt по логину
-POST   /api/v1/auth/login           → токены
-POST   /api/v1/auth/refresh
-GET    /api/v1/devices  · DELETE /api/v1/devices/{id}
-
-GET    /api/v1/vault/header
-PUT    /api/v1/vault/header         If-Match: <revision>
-
-GET    /api/v1/items?since=<seq>    → изменения после серверного номера seq (включая tombstones)
-PUT    /api/v1/items/{id}           If-Match: <revision>  → 409 Conflict при гонке
-DELETE /api/v1/items/{id}           → tombstone
-
-PUT    /api/v1/blobs/{id}  · GET /api/v1/blobs/{id}
-
-GET    /health
-```
-
-- Синхронизация инкрементальная: клиент помнит последний `seq`, сервер выдаёт монотонно растущий номер каждому изменению.
-- Конфликты разрешает клиент тем же кодом, что и в 4a.
-
-**Сервер**
-
-- [ ] V-1 ASP.NET Core minimal API, SQLite (одна таблица объектов + пользователи + устройства), миграции схемы.
-- [ ] V-2 Docker-образ `ghcr.io/safenook/server` + пример `docker-compose.yml` с Caddy для HTTPS; также AOT-бинарник.
-- [ ] V-3 Админ-CLI: `safenook-server user invite`, `user disable`, `backup` (онлайн-копия SQLite).
-- [ ] V-4 Ограничения: квоты на размер хранилища и blob'ов, rate limiting, CORS закрыт.
-- [ ] V-5 Клиент: `nook sync init server URL`, `nook sync login`, `nook sync`, `nook sync devices`.
-- [ ] V-6 Интеграционные тесты клиент ↔ сервер (`WebApplicationFactory`), сценарии конфликтов двух устройств.
-- [ ] V-7 Документация по развёртыванию и бэкапам.
-
-Позже: WebDAV/S3 как «немой» бэкенд с той же раскладкой объектов; защита от отката версий (подписанный журнал ревизий).
-
-**Готово, когда:** два устройства синхронизируются через свой сервер, развёрнутый одной командой `docker compose up`.
-
-### Этап 5. GUI: десктоп и мобильные
-
-Цель: выпуск **2.0**. Ядро к этому моменту стабильно, GUI — ещё один фронтенд.
-
-- [ ] G-1 Avalonia-приложение для Windows/macOS/Linux: список, поиск, просмотр/редактирование всех типов записей, генератор, синхронизация, автоблокировка. MVVM на CommunityToolkit.Mvvm.
-- [ ] G-2 Интеграция с агентом: если агент разблокирован, GUI работает через него (одна сессия на систему).
-- [ ] G-3 Android и iOS из того же кода; разблокировка биометрией через key slot, обёрнутый ключом Android Keystore / iOS Keychain.
-- [ ] G-4 Автозаполнение: Android `AutofillService`; iOS Credential Provider Extension — вероятно, отдельный небольшой нативный модуль (риск, требует исследования).
-- [ ] G-5 Распространение: подписанные инсталляторы (MSIX, `.dmg` с нотаризацией, AppImage/Flatpak), Google Play / F-Droid, App Store (требует Apple Developer аккаунт).
-
-### Организационные задачи
-
-- [x] O-1 GitHub-организация `SafeNook`, репозиторий `SafeNook/safenook`.
-- [ ] O-2 Установить Claude GitHub App на организацию (для работы с репозиторием из сессий Claude).
-- [ ] O-3 Настройки организации: обязательная 2FA, private vulnerability reporting, защита `main`.
-- [ ] O-4 Зарегистрировать домен `safenook.dev` (проверено: в реестре не найден на 21.10.2026).
-- [ ] O-5 Зарезервировать префикс `SafeNook.*` в NuGet (до первой публикации пакетов).
-- [ ] O-6 После выпуска 0.3: архивировать PasswordGeneratorCLI — ссылка на SafeNook в README, пометить NuGet-пакет `PasswordGenCLI` как deprecated с альтернативой.
-
----
-
-## 8. Сквозные требования
-
-**Безопасность**
-
-- Ни одного секрета в логах, исключениях, `ToString()`, выводе без явного `--reveal`.
-- Все форматы версионированы и аутентифицированы; парсеры покрыты fuzz-тестами.
-- [`SECURITY.md`](../SECURITY.md) с порядком сообщения об уязвимостях; `threat-model.md` обновляется на каждом этапе.
-- Зависимости — минимум, версии закреплены через central package management, Dependabot.
-- Перед 1.3 (сервер) — внешний взгляд на криптографию (хотя бы ревью сообществом / знакомым специалистом).
-
-**Качество**
-
-- xUnit v3, покрытие ядра ≥ 80 %, CI на трёх ОС обязателен для merge.
-- Conventional Commits, `CHANGELOG.md` в формате Keep a Changelog, SemVer.
-- Ветка `main` защищена; работа через PR.
-
-**UX**
-
-- Любая деструктивная операция требует подтверждения (`--yes` для скриптов).
-- Ошибки сообщают, что делать дальше («хранилище не найдено → `nook init`»).
-- Локализация: английский по умолчанию, русский через ресурсы (опционально, после 1.0).
-
----
-
-## 9. Версии и вехи
-
-| Версия | Содержимое | Этапы |
-|---|---|---|
-| 0.1 | ядро, формат хранилища, импорт из PasswordGeneratorCLI | 0 |
-| 0.2 | команды CLI | 1 |
-| 0.3 | интерактивный режим | 1 |
-| 0.4 | AOT-бинарники, пакетные менеджеры, `import bitwarden/keepass`, `doctor` | 2 |
-| **1.0** | формат заморожен, стабильный CLI, установка одной командой | 2 |
-| 1.1 | фоновый агент, ssh-agent, файлы, `.env`, `run`, TOTP | 3 |
-| 1.2 | синхронизация git / папка | 4a |
-| 1.3 | SafeNook Server | 4b |
-| 2.0 | десктопный и мобильный GUI | 5 |
-
-До 1.0 формат может меняться без миграций (в README предупреждение «pre-alpha, не храните настоящие секреты»).
-
----
-
-## 10. Риски
-
-| Риск | Вероятность | Что делаем |
-|---|---|---|
-| Ошибка в криптографии/формате | средняя | только стандартные примитивы, тест-векторы, fuzz, ревью, спецификация формата до кода |
-| NSec/libsodium плохо дружит с AOT на какой-то платформе | средняя | спайк F-4 до основной работы; запасной вариант — managed Argon2id + встроенные примитивы |
-| Автоблокировка в интерактивном режиме с блокирующими prompt'ами | высокая | свой цикл ввода, спайк в начале этапа 1 |
-| Команда `nook` совпадает с чем-то в репозиториях дистрибутивов | низкая | проверить перед этапом 2; запасной вариант — `snook` или алиас |
-| ssh-agent на Windows конфликтует со службой OpenSSH | средняя | диагностика и документация, опционально Pageant-протокол |
-| iOS-автозаполнение на Avalonia | высокая | отдельное исследование на этапе 5, допускаем нативный модуль |
-| Объём работ для одного человека | высокая | каждый этап выпускается и полезен сам по себе; этапы 4b и 5 можно отложить без ущерба для предыдущих |
+| 0 / F-1–F-4 | Baseline + M0 | Существующие ADR/bootstrap/CI/spike учтены с границами доказательств; F-3a остаётся открытой |
+| 0 / F-12 | M0 | Спецификация и threat model перенесены перед реализацией |
+| 0 / F-5–F-9 | M1, типы расширяются в M2 | Не завершены; добавить критерии целостности и восстановления |
+| 0 / F-10 | Baseline + M3 | Генератор частично есть; passphrase остаётся открытой |
+| 0 / F-11 | Исключена | Исторический импорт отменён решением владельца; тесты старого формата также исключены |
+| 1 / C-1, C-2, C-5 | M1–M3 | Базовые vault-команды раньше интерактивности; генерирующий CLI уже есть |
+| 1 / C-3, C-4, I-1–I-4, C-6 | M3 | Clipboard и интерактивность не блокируют первый vault |
+| 2 / R-1 | M1–M4 | AOT проверяется непрерывно |
+| 2 / R-2–R-5 | M4 | Release, Homebrew/Scoop/install scripts, winget/AUR/deb/rpm, clean install; порядок каналов уточнить |
+| 2 / import Bitwarden/KeePass, doctor | После M2, отдельный backlog | Не критерий первого vault; внешние импортеры требуют отдельного scope/review |
+| 3 / S-1–S-2 | M2 + расширения M5 | Хранение ключей раньше; генерация, алгоритмы и зашифрованный OpenSSH требуют решения |
+| 3 / E-1 | M2 | Файлы приближены к первому полезному выпуску |
+| age (раньше отсутствовала) / A-1 | M2 | Новый тип; без обещания age-плагина или encryption engine |
+| 3 / агент, S-3–S-5 | M5 | IPC, signing, Windows pipe и confirm-on-use отдельно от хранения |
+| 3 / E-2–E-4 | M5 | Env, run, TOTP не задерживают хранение SSH/age/file |
+| 4a / Y-1–Y-4 | M6 | Формат каталога не решает конфликты автоматически; нужен sync ADR |
+| 4b / V-1–V-7 | M7 | Сервер, auth, API, SQLite, Docker — отложенные предложения, не утверждённый контракт |
+| 5 / G-1–G-5 | M8 | Avalonia/mobile/пакеты — кандидаты; нет обещания версии 2.0 |
+| O-1–O-5 | Организационный backlog | Проверка организации/2FA/reporting/rulesets, домена и NuGet; O-2 — необязательная интеграция Claude |
+| O-6 | Вне scope SafeNook | Изменения старого проекта не являются зависимостью релиза и требуют отдельного запроса |
+
+Старые версии 0.1–0.4 перераспределены по таблице milestones; 1.0 больше не определяется одной установкой.
+Прежние обещания сервера в 1.3 и GUI в 2.0 сняты с календаря до отдельных решений.
+Домены, реестры пакетов и настройки GitHub не считаются проверенными по историческому отчёту.
+
+## 7. Решения перед продолжением
+
+Согласовать предложенные M0–M4 и смысл первого полезного выпуска; затем разрешить SN-002.
+SN-002 предлагается ограничить спецификацией и ADR, без реализации до закрытия блокирующих вопросов.
+[Список вопросов](SN-001-ARCHITECTURE-QUESTIONS.md) содержит рекомендации, альтернативы и точки блокировки.
+Рекомендации не меняют принятые ADR автоматически.
+
+## 8. SN-002: подготовленная спецификация, ожидает обсуждения
+
+12 ноября 2026: владелец подтвердил scope M0–M4, M1/0.1 с обязательным recovery key и
+M2/0.2 с SSH/age/files. Эти прямые решения уточняют исторические оговорки разделов 5/7.
+Результаты проектирования Q-01–Q-09: [решения и согласование](SN-002-DECISIONS.md),
+[threat model](threat-model.md), [vault format](vault-format.md),
+[recovery/I/O](recovery-and-io.md), [storage protocol](storage-protocol.md),
+[план проверок](SN-002-VERIFICATION.md). ADR 0007–0009 имеют статус Proposed.
+F-12 остаётся открытой до согласования; наличие документов не завершает реализацию
+F-5–F-9 и не разрешает SN-003. Импорт старого проекта не возвращается.

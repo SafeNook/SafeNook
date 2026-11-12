@@ -11,7 +11,7 @@ Plan: docs/ROADMAP.md. Decisions: docs/adr/. Vault format (source of truth once 
 
 ## Layout
 - src/SafeNook.Core: vault format, crypto, models, services. Must not reference Console, clipboard, network or UI. IsAotCompatible=true.
-- src/SafeNook.Cli: the `nook` command. System.CommandLine 2.0 API (Option/Command, SetAction, ParseResult.GetValue). Handlers stay thin: parse, call Core, print.
+- src/SafeNook.Cli: the `nook` command. System.CommandLine 3.0.0 API (Option/Command, SetAction, ParseResult.GetValue). Handlers stay thin: parse, call Core, print.
 - tests/*.Tests: xUnit v3.
 
 ## Hard rules

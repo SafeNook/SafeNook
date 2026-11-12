@@ -1,0 +1,15 @@
+{
+  "timestampUtc": "2026-11-12T13:34:08.1915956Z",
+  "os": "Microsoft Windows NT 10.0.26300.0",
+  "architecture": "X64",
+  "cpu": "12th Gen Intel(R) Core(TM) i7-12650H",
+  "sdk": "10.0.404",
+  "package": "TinkStreamingAead 1.0.1",
+  "packageCommit": "93c37582d8f436517c67fa44253c7c45e2215e8d",
+  "packageSha256": "C8C79F81B012D0FC684472BCEF4D791CB25D2F27CAA2854AE4F70BD9C7A7AD61",
+  "aotBinarySha256": "EACFC7F102EE6AAC9611F67CD36CDD7C957AB54BD161C3E71C65EE5581EAFBE6",
+  "profile": "AES256_GCM_HKDF_1MB, RAW, firstSegmentOffset=0",
+  "selftest": "88 assertions passed on final AOT binary; negative failures publish zero bytes",
+  "repetitions": 5,
+  "notes": "Fresh process per operation,size,repetition; 64KiB warmup; GC; sequential execution; elapsed includes crypto and buffered file I/O/Flush but not durable fsync. Upstream pooled plaintext not wiped."
+}
