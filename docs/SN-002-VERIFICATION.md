@@ -126,8 +126,9 @@ publication and strict no-plaintext-before-complete-authentication. Check exact 
 of SSH/age/file bytes including non-UTF8, BOM, CRLF, NUL and missing newline. No key parser
 or plugin invocation is expected for opaque storage.
 
-Before SN-003: separate owner authorisation and review of the rewritten ADR 0009;
-ADRs 0007/0008 are already Accepted. Resolve KDF worker/deadline separately before any
+SN-003A has separate owner authorisation; the rewritten ADR 0009 is Accepted alongside
+ADRs 0007/0008. The executed in-memory subset is recorded in [SN-003A results](SN-003A-IMPLEMENTATION.md);
+the broader release gates below remain open. Resolve KDF worker/deadline separately before any
 hard-timeout promise. Before M1 acceptance: independent primitive/composition review,
 V01–V05/V07–V11 appropriate to M1, filesystem qualification and verified recovery.
 Before M2: V06 whole-object vectors/memory/error handling and complete opaque-type/export

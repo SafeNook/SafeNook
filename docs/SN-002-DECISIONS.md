@@ -27,7 +27,7 @@ SSH/age сохраняются и возвращаются как исходны
 | Q-02 | Бинарные authenticated структуры и bounded JSON, точный AAD | [Vault format](vault-format.md); рабочая спецификация, vectors/review впереди |
 | Q-03 | VK256/RK256, два независимых slots, подтверждённая выдача RK, отдельный full rekey | [ADR 0007](adr/0007-recovery-key-slots.md) Accepted; смена пароля сохраняет recovery slot |
 | Q-04 | p1/salt16, min64MiB/t3, max1GiB/t10, цель0.5–1s | [KDF](recovery-and-io.md); рабочие числа требуют hardware validation; worker/deadline не утверждены |
-| Q-05 | Whole-object BCL AES-GCM для blob<=25MiB, nonce12/tag16, verify-all-before-output | Выбор владельца; [новая редакция ADR 0009](adr/0009-streaming-aead-profile.md) Proposed до согласования текста |
+| Q-05 | Whole-object BCL AES-GCM для blob<=25MiB, nonce12/tag16, verify-all-before-output | Выбор владельца; [новая редакция ADR 0009](adr/0009-streaming-aead-profile.md) Accepted по прямому утверждению владельца перед SN-003A |
 | Q-06 | COW, encrypted manifest, single root, lock, explicit restore | [ADR 0008](adr/0008-generation-commit.md) Accepted; платформенные гарантии ещё проверяются |
 | Q-07 | SSH/age opaque bytes и точный round-trip | Подтверждено для M2; [payloads](vault-format.md), без обещания usability/agent/engine |
 | Q-08 | No secret argv/env, allowlisted reveal/JSON, authenticated bounded-memory export | [I/O](recovery-and-io.md); детальный UX не равен реализации |
@@ -39,15 +39,15 @@ SSH/age сохраняются и возвращаются как исходны
 |---|---|---|
 | D01 | Архитектура ADR 0007 принята | Проверка точных кодировок/UX/vectors; не повторное согласование независимых slots |
 | D02 | Архитектура ADR 0008 принята | OS adapters, failure injection, durability/backup qualification |
-| D03 | Whole-object BCL и 25 МиБ выбраны | Согласовать новую редакцию ADR 0009; затем отдельно перевести её в Accepted |
+| D03 | Whole-object BCL и 25 МиБ выбраны | Редакция ADR 0009 утверждена; реализация и проверка SN-003A |
 | D04 | Лимиты v1 сохранены как рабочие | Аппаратная проверка KDF/RAM/counts; worker и hard deadline требуют отдельного решения |
 | D05 | Точное хранение/восстановление SSH/age bytes подтверждено | Детальный UX, ошибки и экспортные ограничения проверяются перед реализацией |
 | D06 | Ограничения host compromise/full rollback/old-copy revocation подтверждены | Документированные metadata leaks не превращаются в обещание полной конфиденциальности метаданных |
 
-ADR 0001–0008 приняты; ADR 0004 частично заменён принятым ADR 0008.
+ADR 0001–0009 приняты; ADR 0004 частично заменён принятым ADR 0008.
 Attachment STREAM-решение ADR 0003 заменено прямым выбором владельца в R2;
-ADR 0009 фиксирует новую редакцию и пока не Accepted. Остальные назначения AES-GCM
-не отменены. Это согласование не является разрешением SN-003.
+ADR 0009 фиксирует принятую новую редакцию. Остальные назначения AES-GCM
+не отменены. Владелец отдельно разрешил SN-003A: криптопримитивы, бинарные форматы, slots и object codec с тестами. Файловый store и SN-003B не разрешены.
 
 ## Рабочие лимиты и инженерные риски
 
@@ -57,13 +57,14 @@ ADR 0009 фиксирует новую редакцию и пока не Accepte
 - Blob<=25 МиБ; до 10 000 активных записей. Остальные размеры и budgets из спецификации
   сохранены, но не доказывают практическую производительность. Отдельные blob buffers
   требуют до 50 МиБ payload RAM плюс runtime/provider/metadata/concurrency.
-- Independent crypto/envelope vectors, parser limits и review ещё нужны. R1 — изолированный
+- Independent crypto/envelope vectors и binary parser limits проверены в [SN-003A](SN-003A-IMPLEMENTATION.md);
+  независимый review и payload/store проверки ещё нужны. R1 — изолированный
   Windows PoC, не доказательство интегрированного vault и не кроссплатформенный тест.
 - Filesystem atomicity/durability, memory pressure/cancellation, backup/restore, GC и
   symlink/reparse защита требуют испытаний. Old backup продолжает открываться старым ключом.
 - Single-file backup packaging, полноценные history/clipboard/agent и sync остаются отдельно.
 
-## План первого этапа SN-003 — только после отдельного разрешения
+## План первого этапа SN-003 — SN-003A разрешён владельцем
 
 1. Зафиксировать согласованную редакцию ADR 0009 и scope первого изменения. Отдельно решить,
    нужен ли KDF worker/hard deadline; не включать его в реализацию по умолчанию.

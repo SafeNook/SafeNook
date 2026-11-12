@@ -1,13 +1,14 @@
 # SafeNook vault format v1 — SN-002 draft
 
-Status: SN-002-R2 specification, 2026-11-12; not a released or implemented format.
+Status: SN-002-R2 specification, 2026-11-12; not a released format. SN-003A implements
+the in-memory binary/crypto subset; payload schemas and filesystem integration remain pending.
 Architecture in [ADR 0007](adr/0007-recovery-key-slots.md) and
 [ADR 0008](adr/0008-generation-commit.md) is Accepted. Whole-object BCL AES-GCM for blobs
 up to 25 MiB is owner-confirmed; the rewritten [ADR 0009](adr/0009-streaming-aead-profile.md)
-remains Proposed pending review of its text. MUST/SHALL define the v1 working contract.
+is Accepted following owner approval for SN-003A. MUST/SHALL define the v1 working contract.
 Read [threat model](threat-model.md), [recovery and I/O](recovery-and-io.md),
 [storage protocol](storage-protocol.md), [decisions](SN-002-DECISIONS.md) and
-[verification plan](SN-002-VERIFICATION.md) together. SN-003 is not authorised.
+[verification plan](SN-002-VERIFICATION.md) together. SN-003A in-memory crypto/format implementation is authorised; filesystem integration is separate.
 
 ## 1. Encoding and limits
 
