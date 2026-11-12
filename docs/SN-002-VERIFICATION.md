@@ -135,3 +135,10 @@ Before M2: V06 whole-object vectors/memory/error handling and complete opaque-ty
 checks. Before production claims:
 
 external security review and all release gates; documentation consistency is not proof.
+
+## Executed SN-003B1 subset
+
+[SN-003B1 results](SN-003B1-IMPLEMENTATION.md) record strict typed JSON, manifest/item
+reference checks, authenticated in-memory state, lazy blob authentication and deterministic
+allocation-failure tests (V02/V04/V05/V06/V11 subsets). These results do not close the
+filesystem, output UX, cross-platform or external security-review release gates.

@@ -1,7 +1,8 @@
 # SafeNook vault format v1 — SN-002 draft
 
 Status: SN-002-R2 specification, 2026-11-12; not a released format. SN-003A implements
-the in-memory binary/crypto subset; payload schemas and filesystem integration remain pending.
+the in-memory binary/crypto subset; SN-003B1 adds typed payload validation and authenticated
+in-memory state. Filesystem integration remains pending.
 Architecture in [ADR 0007](adr/0007-recovery-key-slots.md) and
 [ADR 0008](adr/0008-generation-commit.md) is Accepted. Whole-object BCL AES-GCM for blobs
 up to 25 MiB is owner-confirmed; the rewritten [ADR 0009](adr/0009-streaming-aead-profile.md)
@@ -312,5 +313,6 @@ and reports omissions; it is not successful complete unlock/restore.
 No format upgrade by write-on-read. Future migration requires a separately approved
 version, backup and atomic publication; legacy PasswordGeneratorCLI import remains excluded.
 These layouts plus [verification fixtures](SN-002-VERIFICATION.md) are sufficient to write
-an independent structural parser; cryptographic vectors and implementation remain future
-work. HKDF definition and vectors: [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869.txt).
+an independent structural parser. In-memory implementation results are recorded in
+[SN-003A](SN-003A-IMPLEMENTATION.md) and [SN-003B1](SN-003B1-IMPLEMENTATION.md); filesystem
+qualification and independent security review remain open. HKDF definition and vectors: [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869.txt).

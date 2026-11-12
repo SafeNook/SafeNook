@@ -115,7 +115,7 @@ BCL AES-GCM до 25 МиБ; редакция ADR 0009 принята перед 
 - [x] F-5: AEAD, Argon2id, HKDF; known-answer, tamper, bounds и negative tests; независимая проверка Argon2id (SN-003A, Windows x64).
 - [ ] F-6: header, password/recovery slots, wrap/unwrap, ограниченная калибровка KDF; точная политика recovery по Q-03.
 - [ ] F-7: атомарная запись, lock, owner-only permissions, backup/restore; crash consistency нескольких файлов.
-- [ ] F-8: source-generated JSON, строгий разбор версии/типов/размеров; модель SSH/age/file.
+- [x] F-8: source-generated JSON, строгий разбор версии/типов/размеров; модель SSH/age/file (SN-003B1, Windows x64).
 - [ ] F-9: session, CRUD, очистка ключей, история/tombstones по согласованной модели.
 - [ ] C-1/C-2/C-5: минимальный CLI и его тесты вместе с ядром; единичный процесс без обязательного агента.
 - [ ] S-1/S-2 (часть): хранение и извлечение SSH; генерацию и поддержку всех OpenSSH-вариантов уточнить в Q-07.
@@ -209,3 +209,13 @@ SN-003A; файловый store/SN-003B не разрешены.
 F-8 частично: binary envelope и vault.json wrapper; payload DTO/schema не реализованы.
 F-7/F-9, COW store, CLI vault, backup/restore и SN-003B остаются вне этого изменения.
 Историческая таблица baseline выше описывает состояние до SN-002/SN-003A.
+
+## 11. SN-003B1: typed manifest и authenticated state в памяти
+
+Владелец отдельно разрешил SN-003B1. [Результаты и контракты](SN-003B1-IMPLEMENTATION.md):
+типизированные payloads/manifest, строгий source-generated JSON, проверка ссылок и
+аутентификация root/manifest/items перед публикацией состояния; blobs проверяются полностью
+перед использованием. Trusted KDF/RAM admission и тесты отказов добавлены.
+F-8 (модели и строгий JSON) реализована; F-9 частично — открытие/очистка состояния, без CRUD
+и файловых операций. F-7, SN-003B2, filesystem adapters/atomic commit/backup остаются открыты.
+Исторические ограничения scope SN-003A выше не отменяют это отдельное разрешение.
