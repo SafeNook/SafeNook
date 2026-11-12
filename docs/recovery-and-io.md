@@ -1,7 +1,9 @@
 # Recovery, KDF and plaintext boundaries — SN-002 draft
 
-Status: Proposed, 2026-11-12. Mandatory recovery in M1 is owner-confirmed; the protocol
-below awaits [ADR 0007](adr/0007-recovery-key-slots.md). Exact crypto encodings are in
+Status: SN-002-R2, 2026-11-12. Two independent slots and mandatory recovery in M1 are
+Accepted in [ADR 0007](adr/0007-recovery-key-slots.md). Detailed CLI UX remains a specification;
+KDF worker/hard deadlines below are explicitly unapproved engineering options.
+Exact crypto encodings are in
 [vault format](vault-format.md); commits use [storage protocol](storage-protocol.md).
 CLI spellings below are proposed contracts, not implemented commands.
 
@@ -20,7 +22,7 @@ flowchart TD
     V --> O[HKDF per-write object keys]
     HM --> H[HMAC complete header and both slots]
     O --> I[AES-GCM items and manifest]
-    O --> B[Reviewed STREAM profile for M2 blobs]
+    O --> B[Whole-object BCL AES-GCM for blobs up to 25 MiB]
 ```
 
 VK and RK are independently sampled from OS-backed CSPRNG. RK is never derived from a
@@ -123,26 +125,26 @@ guarantees. Explicit per-operation budget increases may reach the 1 GiB wire cei
 never take budget consent from the vault file. A larger saved m is not silently reduced:
 ask for a compatible trusted device/local budget, or allow explicit RK recovery.
 
-Initial calibration uses synthetic nonsecret password/salt: try m=64,128,256,512,1024 MiB
-within the approved memory budget at t=3, then increase t one at a time up to 10 at the
-chosen m. Prefer the highest memory that stays within a measured 1-second single-call
-target; aim for 0.5–1 second, increasing t only after memory. Use a warmup and median of
-three calls for each candidate, bounded by a 30-second total calibration deadline. If
-measurement budget expires, select the strongest already measured candidate within the
-latency target; if none finished, fail. If the minimum profile itself exceeds 1 second
-but finishes within operation timeout, retain the minimum and report slow hardware.
-Never go below m64/t3. Persist exact chosen parameters, not a time estimate.
+The calibration working target is 0.5–1 second. Evaluate m=64,128,256,512,1024 MiB
+within an explicitly approved local budget at t=3, then increase t up to 10. Prefer memory
+before passes and use synthetic inputs, warmup and repeated measurements. This search and
+the 256 MiB/default available-RAM heuristic above require validation on representative
+hardware; neither a target latency nor format ceilings prove a hard execution deadline.
+If even the minimum is slow, retain m64/t3 or fail with a resource error, never downgrade.
+Persist exact m/t, not latency; devices opening an existing vault must use its exact values.
 
-Each real password attempt has a default 10-second wall-clock budget, explicit local
-maximum 30 seconds; one attempt at a time, no background retries/all-slot probing.
-Argon2 native calls are not assumed cooperatively cancellable. A future isolated local
-KDF worker with a killable process deadline and bounded allocation is required to enforce
-that wall-clock limit; cancellation of a Task alone is not sufficient. Secrets travel in
-restricted inherited pipes/handles, never argv/env; helper must not log/dump payloads.
-Worker design and AOT/platform qualification are implementation gates, not implemented
-security claims. Any timeout/OOM/native error aborts, wipes surviving buffers, leaves
-vault untouched and does not retry with cheaper parameters. A hard real-time deadline on
-an unresponsive OS is not promised. RK route avoids Argon2 but still validates full root.
+**Not approved or implemented:** a killable KDF worker, a 10-second attempt deadline,
+30-second maximum/total calibration deadline and their IPC/lifecycle. These are retained
+as engineering options from the original draft, not requirements adopted by ADR 0007/0008.
+Before any hard-deadline promise, separately decide the mechanism, permission/memory model,
+AOT deployment and secret cleanup and verify it on each platform. A Task timeout does not
+cancel a native Argon2 call. Do not claim cooperative cancellation of that call.
+
+One attempt at a time; no background retries/all-slot probing. Check parameter and local
+memory bounds before invoking KDF. OOM/native failure aborts, wipes surviving buffers,
+leaves the vault untouched and never retries with cheaper parameters. Pending cancellation
+prevents publication after native completion; if a later approved mechanism terminates
+execution, test its cleanup separately. RK avoids Argon2 but still validates the full root.
 
 Upgrades are explicit credential-authenticated slot replacements with fresh salt/ID/nonce,
 never auto-rewrites during unlock. Do not raise costs on a device that cannot restore them.
@@ -173,7 +175,11 @@ category; no partly written JSON document or prior secret output. Exact numeric 
 exit-code mapping is deferred to its CLI contract; existing CLI codes are unchanged here.
 
 Exports: authenticate the complete selected record/blob into bounded RAM before creating
-output. Require an explicit destination, exclusive create, no overwrite by default.
+output. Blob v1 uses one AES-GCM tag, exact length/EOF and context/manifest validation,
+not streaming-prefix acceptance. Plan for separate plaintext and ciphertext buffers
+(up to 50 MiB payload arrays for a 25 MiB blob) plus runtime/metadata overhead. No ArrayPool
+is required initially. Admission limits and OOM/cancellation tests must cover concurrent
+operations; explicitly wipe owned sensitive buffers on every exit path. Require an explicit destination, exclusive create, no overwrite by default.
 For replacement require an explicit overwrite decision, same-directory private temp,
 flush and supported atomic replacement; an existing destination remains on failure before
 publication. POSIX files0600/directories0700; Windows protected DACL for current user and

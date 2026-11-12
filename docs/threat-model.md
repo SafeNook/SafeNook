@@ -1,10 +1,11 @@
 # SafeNook threat model — SN-002 draft
 
-Status: proposed specification, 2026-11-12. No implementation or security certification.
+Status: SN-002-R2 architecture alignment, 2026-11-12. No implementation or security certification.
 Owner-confirmed scope: local-first, mandatory recovery in M1, developer-secret storage
 in M2; no PasswordGeneratorCLI compatibility. See [decision register](SN-002-DECISIONS.md),
 [wire format](vault-format.md), [recovery](recovery-and-io.md) and
-[verification plan](SN-002-VERIFICATION.md). New ADRs remain Proposed.
+[verification plan](SN-002-VERIFICATION.md). ADRs 0007/0008 are Accepted; the rewritten ADR 0009 remains Proposed. The owner selected
+whole-object BCL AES-GCM and confirmed the host-compromise/rollback/revocation limitations.
 
 ## Assets, actors and trust boundaries
 
@@ -41,10 +42,10 @@ Full-disk encryption and OS hardening complement, but do not replace, vault encr
 | T02 | Stolen recovery artifact | Independent random RK256, no plaintext RK in vault; separate storage | RK plus snapshot grants access; recovery lifecycle V03 |
 | T03 | Header edit, slot removal, KDF downgrade | Slot AEAD, whole-header HMAC, limits before KDF | Header destruction prevents unlock; cannot authenticate before KDF; V04 |
 | T04 | Swap ciphertext across vaults, records, types or revisions | Context-bound keys/AAD, immutable write IDs, authenticated manifest hashes | Complete old-generation replay is distinct; V04/V05 |
-| T05 | Blob truncation/reorder/duplicate/append | Specified streaming profile, final marker, exact length and whole-blob verification before output | Profile requires independent review/interoperability before code is accepted; V06 |
+| T05 | Blob truncation, byte reorder/duplication or append | Exact 118+L+16 size/EOF, context AAD, manifest hash and whole-object GCM authentication before output | Independent envelope vectors and review required; no chunk protocol in v1; V06 |
 | T06 | Deletion/corruption / availability | Manifest inventory and retained generation; independent verified backups | Detection does not recreate deleted bytes; no redundancy means permanent loss; V07/V08 |
 | T07 | Full rollback | Explicit restore warning; local sequence/parent hash only assist diagnostics | No trusted external monotonic anchor in M1/M2; fully authentic rollback is undetectable; V08 |
-| T08 | Attacker-selected resource exhaustion | Fixed header, file/JSON/count caps, one KDF, local memory/time budget | Bounded expensive operations and disk-filling remain possible; V02/V04 |
+| T08 | Attacker-selected resource exhaustion | Fixed header, file/JSON/count caps, one KDF, bounded allocation; whole-object 2L payload budget and concurrency admission | Hardware validation needed; KDF worker/hard deadline not approved or implemented; disk-filling remains possible; V02/V04/V06 |
 | T09 | Multi-file crash, disk full, competing writer | Immutable COW objects, single authenticated root commit, exclusive OS lock | Power-loss durability depends on qualified filesystem/storage; V07 |
 | T10 | Path traversal, symlink/reparse substitution | Root-relative handles, no-follow opens, generated names, restrictive creation ACL | Same-user/root adversary can still control execution or mutate open files; V09 |
 | T11 | Logs, argv, JSON, terminal injection | No secret argv/env; allowlisted diagnostics; explicit reveal; escape metadata controls | Explicit output can be captured by terminal/session recorder; V10 |

@@ -1,6 +1,7 @@
 # Storage transactions and recovery — SN-002 draft
 
-Status: Proposed, 2026-11-12; [ADR 0008](adr/0008-generation-commit.md).
+Status: Accepted architecture under SN-002-R2, 2026-11-12; [ADR 0008](adr/0008-generation-commit.md).
+Implementation and filesystem durability remain unverified.
 This protocol uses the exact authenticated references in [vault-format.md](vault-format.md).
 It does not claim that File.Move/File.Replace alone makes a directory transaction durable.
 
@@ -74,6 +75,18 @@ must remain stable throughout initial publication and later access.
    locked operation. Wipe operation buffers, release lock. If a post-publication flush or
    acknowledgement fails, report **commit outcome uncertain**, preserve all candidates and
    require reopen. Do not report an ordinary retryable abort or blindly repeat a mutation.
+
+## Whole-object blob boundary and resource failure
+
+Blob v1 is envelope118 + ciphertext[L] + tag16, algorithm1, maximum 26,214,534 bytes.
+Its single GCM tag, exact size/EOF, context and manifest hash must pass before export or
+commit validation succeeds. No partial plaintext/chunk publication is allowed. Reserve
+space for separate ciphertext/plaintext arrays (2L, up to 50 MiB) plus operational overhead,
+and for old/new COW files on disk. Check local admission and serialize/bound large operations.
+OOM, failed authentication or cancellation before root publication leaves the old root;
+clean only owned staging files, wipe sensitive buffers, and never overwrite existing data
+or silently switch algorithm/limits to recover. After root publication retain the existing
+uncertain-commit handling; cleanup cannot pretend a published commit never happened.
 
 ## Failure matrix and explicit recovery
 

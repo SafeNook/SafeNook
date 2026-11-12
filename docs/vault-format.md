@@ -1,18 +1,17 @@
 # SafeNook vault format v1 — SN-002 draft
 
-Status: **Proposed**, 2026-11-12; not a released or implemented format.
-MUST/SHALL below define the candidate, not owner approval. Read
-[threat model](threat-model.md), [recovery and I/O](recovery-and-io.md),
+Status: SN-002-R2 specification, 2026-11-12; not a released or implemented format.
+Architecture in [ADR 0007](adr/0007-recovery-key-slots.md) and
+[ADR 0008](adr/0008-generation-commit.md) is Accepted. Whole-object BCL AES-GCM for blobs
+up to 25 MiB is owner-confirmed; the rewritten [ADR 0009](adr/0009-streaming-aead-profile.md)
+remains Proposed pending review of its text. MUST/SHALL define the v1 working contract.
+Read [threat model](threat-model.md), [recovery and I/O](recovery-and-io.md),
 [storage protocol](storage-protocol.md), [decisions](SN-002-DECISIONS.md) and
-[verification plan](SN-002-VERIFICATION.md) together. ADRs
-[0007](adr/0007-recovery-key-slots.md), [0008](adr/0008-generation-commit.md) and
-[0009](adr/0009-streaming-aead-profile.md) must be decided before implementation.
-Existing accepted ADRs have not been silently replaced.
+[verification plan](SN-002-VERIFICATION.md) together. SN-003 is not authorised.
 
 ## 1. Encoding and limits
 
-An octet is 8 bits. All binary unsigned integers are **little endian**, except the
-streaming profile's explicitly big-endian chunk counter. No native struct layout,
+An octet is 8 bits. All binary unsigned integers are **little endian**. No native struct layout,
 varints, implicit padding, terminators or concatenation of variable strings is allowed.
 `||` denotes byte concatenation; slices `[a:b]` exclude b. Literal magic values are
 8 ASCII bytes. `D(s)` = ASCII(`SafeNook/v1/`) || ASCII(s) || byte(0); labels are exact,
@@ -40,6 +39,11 @@ as stored. Each encryption attempt gets a new write ID, even on retry/cancel/res
 | Retention target | Current plus one automatic previous generation; explicit backups separate |
 | JSON nesting | 16 levels; no duplicate/unknown properties or nonfinite numbers |
 
+These are working v1 limits. The 25 MiB file cap is owner-confirmed; 10,000 active records,
+aggregate memory budgets and Argon2 costs need representative hardware validation before
+release. Format bounds are not evidence of practical performance. Do not change stored
+parameters or silently lower limits after allocation failure.
+
 Check physical size, fixed prefix, allowed kinds/versions, integer arithmetic overflow,
 expected file length and resource totals before allocating/decrypting. Limits apply
 independently to retained generations; a full rekey requires space for old and new data.
@@ -63,8 +67,8 @@ vault/
 
 No filename comes from a record title, imported filename or unauthenticated JSON.
 Root-relative paths are derived from kind and write ID, not read as paths from payloads.
-The detailed physical naming and manifest addition are proposed refinements/replacements
-of ADR 0004's example layout in ADR 0008; directory-per-record remains the decision.
+The detailed physical naming and manifest addition replace ADR 0004's example layout
+under Accepted ADR 0008; directory-per-record remains the decision.
 
 `vault.json` is UTF-8 without BOM. It is a JSON object with exactly one string property,
 `payload`, containing canonical padded RFC 4648 base64 of the binary header. No other
@@ -158,16 +162,16 @@ Item, blob and manifest files begin with E, a 118-byte binary prefix. No trailin
 | 60 | 32 | writeId (must equal derived path and manifest/header reference) |
 | 92 | 2 | type: 1=login, 2=note, 3=SSH, 4=age, 5=file; zero for blob/manifest |
 | 94 | 2 | schema=1 |
-| 96 | 2 | algorithm: 1=whole AES-256-GCM; 2=stream profile below |
+| 96 | 2 | algorithm=1: whole-object AES-256-GCM; all other values unsupported in v1 |
 | 98 | 8 | plaintext length L |
-| 106 | 12 | random nonce for algorithm1; all zeros for algorithm2 |
+| 106 | 12 | fresh random GCM nonce for algorithm1 (no zero-sentinel meaning) |
 
 ```
 ObjectKey = HKDF(VK, salt=vaultId, info=D("object-key") || E[0:106])
 ObjectAAD = D("object") || E
 ```
 
-Items/manifests require algorithm1. Their suffix is ciphertext[L] || tag[16]; exact file
+Items, blobs and manifests require algorithm1. Their suffix is ciphertext[L] || tag[16]; exact file
 length 118+L+16. GCM uses ObjectKey, E.nonce and ObjectAAD. Whole plaintext authenticates
 before JSON parsing or output. The immutable context commits vault, epoch, logical ID,
 write ID, type, schema, algorithm and length. A type change cannot be interpreted under
@@ -182,45 +186,41 @@ requires a fresh VK epoch before exceeding that operational budget. It is not a 
 anti-rollback counter. Restored/copied writers must draw fresh randomness, not restore RNG
 state. Domain-separated per-write keys avoid a long-lived random96-nonce GCM key.
 
-## 5. Blob streaming profile (M2; proposed ADR 0009)
+## 5. Whole-object blobs (M2; SN-002-R2)
 
-Use the **RAW AES-GCM-HKDF Streaming encryption function** specified by
-[Tink](https://developers.google.com/tink/streaming-aead/aes_gcm_hkdf_streaming), not an
-invented sequence of independent AEAD messages. Parameters: KeyValue=ObjectKey,
-DerivedKeySize=32, HkdfHashType=SHA256, CiphertextSegmentSize=65,536,
-AssociatedData=ObjectAAD; firstSegmentOffset=0, no Tink keyset/output prefix.
-The 118-byte SafeNook prefix is outside that stream. Blobs require kind2/type0/schema1,
-algorithm2 and zero envelope nonce.
+Blobs require kind=2, type=0, schema=1, algorithm=1. Use .NET BCL AesGcm with
+ObjectKey and ObjectAAD exactly as in section 4: nonce12 is E[106:118], tag16 is the
+last 16 bytes. File = E[118] || ciphertext[L] || tag[16]. L is 0..26,214,400 bytes.
+Exact file length is 118+L+16: maximum **26,214,534 bytes**, empty blob **134 bytes**.
+Empty plaintext still has a nonce, authenticated envelope and GCM tag; it is not an empty
+file or skipped authentication. No chunk headers, counters or final markers exist in v1.
 
-Profile summary for independent parsing (the linked function defines encryption):
-stream header = byte(40) || randomSalt32 || randomPrefix7. Segment key is HKDF(KeyValue,
-salt=randomSalt32, info=ObjectAAD). Chunk nonce = prefix7 || BE32(index) || finalByte;
-index starts at zero, finalByte is 1 only on the last segment, otherwise 0. Each segment
-uses AES-256-GCM, empty per-segment AAD and tag16. First plaintext segment capacity is
-65,480 bytes, later capacity 65,520; every non-last segment is full. Empty input has one
-empty final segment. No extra empty segment follows an exactly full last segment.
+Before allocation, check physical size and checked length arithmetic, supported
+version/kind/type/schema/algorithm, all expected vault/epoch/object/write fields, length
+limits and exact EOF. Reject algorithm=2 and every other unknown algorithm; do not infer
+format from size or silently fall back. Validate the complete ciphertext hash against
+the authenticated manifest and the one GCM tag before releasing any plaintext. Read into
+owned bounded buffers; hash and decrypt those same bytes, not a second mutable file read.
+Wrong tag, AAD, context, length, truncation or appended data fails without output. A whole
+historical blob conflicts with the current manifest; a complete old root remains replayable.
 
-For L<=25 MiB, n=1 when L<=65,480, otherwise
-n=1+ceil((L-65,480)/65,520). Thus 1<=n<=401. The whole file has exactly
-118+40+L+16*n bytes, maximum 26,220,974 bytes. The final flag is encoded into the nonce,
-not stored as an unauthenticated flag in the stream. Readers derive expected n and
-segment lengths from bounded E.L, enforce final authentication and exact EOF. Check
-manifest ciphertext hash, all segment tags and total length before providing final
-plaintext; never treat tag failure as EOF. Reordering, duplication, truncation and
-cross-write chunk substitution must fail. Replaying a complete historical blob is
-rejected by the current manifest, but replaying a complete old root remains possible.
+Use separate owned plaintext and ciphertext arrays for the first implementation. Span
+avoids extra copies; ArrayPool and overlapping in-place buffers are not required/assumed.
+The working payload budget is 2L, at most 52,428,800 bytes (50 MiB), plus headers, keys,
+provider/runtime, decrypted metadata and concurrent-operation overhead. R1's isolated
+Windows x64 peak was about 61 MiB, not a portable allocation guarantee. Bound concurrency
+and check local memory admission before allocating; OOM/any failure wipes known sensitive
+buffers, leaves current root/destination unchanged and does not lower limits or protection.
+Explicitly wipe owned keys/plaintext in finally on success, failure and cancellation.
+Whole-object Decrypt is not assumed interruptible; if cancellation arrives during it,
+withhold publication when it returns, then clean up. No plaintext disk spool is introduced.
 
-This changes ADR 0003's blanket random96 nonce rule for chunks and clarifies that 64 KiB
-is a **ciphertext segment** size. Adoption requires ADR 0009, cross-implementation vectors
-and review. Using this description does not make a new .NET implementation audited.
-Prefer an existing reviewed implementation of this function if AOT-compatible; otherwise
-block M2 release pending reviewed port. No library/dependency is selected in SN-002.
-Alternatives and their approval consequences are recorded in ADR 0009.
-
-Whole-file release: because blobs are capped, decrypt into a private bounded memory
-buffer, check every segment, then export. Do not decrypt a second mutable read after
-verification; use the same verified plaintext. No partial stdout or plaintext disk spool.
-Memory shortage fails without changing the vault or destination.
+Only after complete authentication may verified plaintext be exported from that same
+buffer using [I/O rules](recovery-and-io.md). Do not claim secure erasure of GC/native/OS
+copies. Larger files require a separately reviewed algorithm/profile or format version,
+independent vectors and migration via fresh immutable writes/COW. The former STREAM
+proposal and alternatives are historical in [ADR 0009](adr/0009-streaming-aead-profile.md)
+and [R1 research](SN-002-STREAMING-RESEARCH.md); they impose no streaming requirement on v1.
 
 ## 6. JSON plaintext rules
 
