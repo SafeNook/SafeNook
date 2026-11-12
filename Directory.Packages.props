@@ -8,8 +8,8 @@
     <PackageVersion Include="System.CommandLine" Version="3.0.0" />
   </ItemGroup>
 
-  <ItemGroup Label="Spikes">
-    <!-- F-4: spikes/NSecAotSpike only; see docs/adr/0002-crypto-library.md -->
+  <ItemGroup Label="Cryptography">
+    <!-- Core Argon2id and F-4 spike; see docs/adr/0002-crypto-library.md -->
     <PackageVersion Include="NSec.Cryptography" Version="26.4.0" />
   </ItemGroup>
 

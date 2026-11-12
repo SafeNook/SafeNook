@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SN-003B1: exercises the actual Core crypto/format implementation under Native AOT.
+    Not part of SafeNook.slnx. See docs/SN-003B1-IMPLEMENTATION.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>core-state-aot-smoke</AssemblyName>
+    <RootNamespace>SafeNook.Spikes.CoreState</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/SafeNook.Core/SafeNook.Core.csproj" />
+    <Compile Include="../../tests/SafeNook.Core.Tests/Vault/Vectors.g.cs" Link="Vectors.g.cs" />
+      <Compile Include="../../tests/SafeNook.Core.Tests/Vault/StateFixture.cs" Link="StateFixture.cs" />
+  </ItemGroup>
+
+  <!--
+    Optional static linking: pass -p:LibsodiumStaticLib=/path/to/libsodium.a.
+    DirectPInvoke resolves NSec's [LibraryImport("libsodium")] calls at link time against the
+    archive, so the binary needs no libsodium.so/.dylib next to it.
+  -->
+  <ItemGroup Condition="'$(LibsodiumStaticLib)' != ''">
+    <DirectPInvoke Include="libsodium" />
+    <NativeLibrary Include="$(LibsodiumStaticLib)" />
+  </ItemGroup>
+
+  <!-- With static linking, don't copy the shared libsodium from the NuGet package into the output. -->
+  <Target Name="DropSharedLibsodium" AfterTargets="ResolvePackageAssets" Condition="'$(LibsodiumStaticLib)' != ''">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" />
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -24,4 +24,13 @@ We aim to acknowledge reports within 7 days and to agree on a disclosure timelin
 
 In scope: the vault format and cryptography, the `nook` CLI, and (once they exist) the agent, sync and server components.
 
-Out of scope until 1.0: hardening against attackers who already control the user's account or machine while the vault is unlocked. The threat model will be documented in `docs/threat-model.md`.
+Protection against attackers who already control the user's account or machine while
+the vault is unlocked is not currently guaranteed. Reaching version 1.0 alone will
+not establish that protection. The precise threat model and security guarantees
+must be agreed before implementing vault storage. The [SN-002 threat model](docs/threat-model.md)
+and [vault specification](docs/vault-format.md) are drafts pending the
+[owner decisions](docs/SN-002-DECISIONS.md), not implemented security guarantees.
+
+The first functionally useful milestone is still pre-alpha. The proposed stable
+release criteria include format review, negative tests, backup/restore validation
+and security review; installation or a working demo alone is not sufficient.
