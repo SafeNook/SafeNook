@@ -1,3 +1,5 @@
+# Pull request template
+
 ## What and why
 
 <!-- What does this change do, and why is it needed? Link related issues: "Closes #123". -->
