@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><PublishAot>true</PublishAot><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/SafeNook.Storage/SafeNook.Storage.csproj" /></ItemGroup>
+  <ItemGroup Condition="'$(LibsodiumStaticLib)' != ''"><DirectPInvoke Include="libsodium" /><NativeLibrary Include="$(LibsodiumStaticLib)" /></ItemGroup>
+  <Target Name="DropSharedLibsodium" AfterTargets="ResolvePackageAssets" Condition="'$(LibsodiumStaticLib)' != ''">
+    <ItemGroup><NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" /><RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" /></ItemGroup>
+  </Target>
+</Project>

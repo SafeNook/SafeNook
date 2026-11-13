@@ -219,3 +219,20 @@ F-7/F-9, COW store, CLI vault, backup/restore и SN-003B остаются вне
 F-8 (модели и строгий JSON) реализована; F-9 частично — открытие/очистка состояния, без CRUD
 и файловых операций. F-7, SN-003B2, filesystem adapters/atomic commit/backup остаются открыты.
 Исторические ограничения scope SN-003A выше не отменяют это отдельное разрешение.
+
+## 12. SN-003B2: NTFS store и COW qualification
+
+[Результаты и ограничения](SN-003B2-IMPLEMENTATION.md): отдельный файловый слой,
+handle-relative Windows x64/NTFS adapter, OS lock, immutable staging и root-last COW,
+проверка предыдущего root и явная проверка выбранного recovery candidate. Реальные
+fault/process-crash/ACL/reparse/Native AOT проверки отделены от power-loss qualification.
+F-7 реализована частично: внутренний qualification API; production writable mode закрыт,
+GC не удаляет данные, Linux/macOS adapters и power-loss qualification не выполнены.
+F-7 целиком не отмечается завершённой; пользовательские vault/backup/restore команды не добавлены.
+
+## 13. SN-003B3: Windows security и durability review
+
+[Отчёт](SN-003B3-SECURITY-REVIEW.md): усилены native handle lifetime, ACL, backup lookup и
+проверки root/namespace перед публикацией. ABI сверена с Windows SDK; добавлены регрессии.
+Production writes и GC остаются выключенными; F-7 не завершена. Независимый внешний review,
+реальные quota/ENOSPC и power-cut испытания остаются открытыми; подготовлены план стенда и checklist.
