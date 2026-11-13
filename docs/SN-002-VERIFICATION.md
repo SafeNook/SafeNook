@@ -142,3 +142,10 @@ external security review and all release gates; documentation consistency is not
 reference checks, authenticated in-memory state, lazy blob authentication and deterministic
 allocation-failure tests (V02/V04/V05/V06/V11 subsets). These results do not close the
 filesystem, output UX, cross-platform or external security-review release gates.
+
+## Executed SN-003B2 qualification subset
+
+[SN-003B2 results](SN-003B2-IMPLEMENTATION.md) separate actual Windows x64/NTFS OS locks,
+handle-relative IO, ACL/reparse/link checks, commit fault injection, independent-process
+crashes and Native AOT from unexecuted power-loss qualification. V07/V09/V11 are partial,
+not cross-platform completion. Production writable mode and destructive GC remain blocked.

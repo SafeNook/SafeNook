@@ -1,7 +1,9 @@
 # Storage transactions and recovery — SN-002 draft
 
 Status: Accepted architecture under SN-002-R2, 2026-11-12; [ADR 0008](adr/0008-generation-commit.md).
-Implementation and filesystem durability remain unverified.
+The internal Windows x64/NTFS implementation and executed process/fault tests are recorded
+in [SN-003B2](SN-003B2-IMPLEMENTATION.md). Power-loss durability remains unqualified and
+production writable mode remains refused; this does not weaken the release gate below.
 This protocol uses the exact authenticated references in [vault-format.md](vault-format.md).
 It does not claim that File.Move/File.Replace alone makes a directory transaction durable.
 
