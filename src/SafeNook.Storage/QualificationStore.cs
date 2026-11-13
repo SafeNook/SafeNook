@@ -70,10 +70,10 @@ internal sealed class QualificationStore : IDisposable
             var staged=files.StageRoot(snapshot.Header,faults,token);
             using(staged.Handle)
             {
-                token.ThrowIfCancellationRequested(); faults.At(CommitStep.BeforePublish); attempted=true;
+                token.ThrowIfCancellationRequested(); faults.At(CommitStep.BeforePublish); files.ValidateNamespace(); attempted=true;
                 files.PublishRoot(staged.Handle,false); faults.At(CommitStep.AfterPublish);
             }
-            files.FlushRootNamespace(faults); var readback=files.ReadRoot(token);
+            files.FlushRootNamespace(faults); files.ValidateNamespace(); var readback=files.ReadRoot(token);
             if(!readback.AsSpan().SequenceEqual(snapshot.Header)) Fail("root-readback");
             state.Dispose(); state=Authenticate(readback,CredentialKind.Password,password,files,policy,token);
             faults.At(CommitStep.RootReadback);
@@ -95,6 +95,7 @@ internal sealed class QualificationStore : IDisposable
         EnsureUsable(); var attempted=false; var checkingCurrent=true; AuthenticatedVaultState? candidate=null;
         try
         {
+            _files.ValidateNamespace();
             var current=_files.ReadRoot(token);
             if(!current.AsSpan().SequenceEqual(_header)) { Invalidate(); return new(CommitOutcome.RecoveryRequired,_files.DirectoryFlushAvailable); }
             checkingCurrent=false; // A wrong supplied credential alone does not establish storage corruption.
@@ -132,11 +133,16 @@ internal sealed class QualificationStore : IDisposable
             var staged=_files.StageRoot(next,faults,token);
             using(staged.Handle)
             {
+                token.ThrowIfCancellationRequested(); faults.At(CommitStep.BeforePublish);
+                checkingCurrent=true;
                 if(!_files.ReadRoot(token).AsSpan().SequenceEqual(current)) Fail("root-changed-before-publish");
-                token.ThrowIfCancellationRequested(); faults.At(CommitStep.BeforePublish); attempted=true;
+                var backupName=Convert.ToHexStringLower(current.AsSpan(44,16))+".json";
+                if(!_files.ReadBackup(backupName,token).AsSpan().SequenceEqual(current)) Fail("backup-changed-before-publish");
+                _files.ValidateNamespace();
+                checkingCurrent=false; attempted=true;
                 _files.PublishRoot(staged.Handle,true); faults.At(CommitStep.AfterPublish);
             }
-            _files.FlushRootNamespace(faults); var readback=_files.ReadRoot(token);
+            _files.FlushRootNamespace(faults); _files.ValidateNamespace(); var readback=_files.ReadRoot(token);
             if(!readback.AsSpan().SequenceEqual(next)) Fail("root-readback");
             KeySlots.VerifyHeader(readback,nextKey.Span);
             candidate.Dispose(); candidate=null;

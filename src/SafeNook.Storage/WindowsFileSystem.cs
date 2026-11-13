@@ -16,7 +16,6 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     private readonly string _owner = CurrentOwner();
     private nint _descriptor;
     private SafeFileHandle? _lock;
-    private readonly string _path;
     internal bool DirectoryFlushAvailable { get; private set; } = true;
 
     private static string CurrentOwner() { using var identity=WindowsIdentity.GetCurrent(); return identity.User!.Value; }
@@ -25,8 +24,9 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     {
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64) throw new PlatformNotSupportedException("Only Windows x64 has a qualification adapter.");
         if (path.Length < 4 || !char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] != '\\' || path.Contains('/')) Fail("invalid-root-path");
-        _path = path.TrimEnd('\\');
-        var names = _path[3..].Split('\\'); foreach (var name in names) Component(name);
+        token.ThrowIfCancellationRequested();
+        var rootPath = path.TrimEnd('\\');
+        var names = rootPath[3..].Split('\\'); foreach (var name in names) Component(name);
         try
         {
             if (!WindowsNative.ConvertDescriptor("O:"+_owner+"D:P(A;;FA;;;"+_owner+")", 1, out _descriptor, out _)) Fail("security-descriptor");
@@ -66,17 +66,20 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         bool writable = false, bool rename = false, uint share = 1, bool securityCheck = true)
     {
         Component(name);
+        using var parentLease = new NativeHandleLease(parent);
         fixed (char* chars = name)
         {
             var unicode = new WindowsNative.UnicodeString { Length = checked((ushort)(name.Length * 2)), MaximumLength = checked((ushort)(name.Length * 2)), Buffer = chars };
-            var attributes = new WindowsNative.ObjectAttributes { Length = (uint)sizeof(WindowsNative.ObjectAttributes), RootDirectory = parent.DangerousGetHandle(),
+            var attributes = new WindowsNative.ObjectAttributes { Length = (uint)sizeof(WindowsNative.ObjectAttributes), RootDirectory = parentLease.Value,
                 ObjectName = &unicode, Attributes = 0x1040, SecurityDescriptor = disposition == 1 ? 0 : _descriptor };
             var access = 0x80120000u | (writable ? 0x40000000u : 0) | (rename ? 0x10000u : 0);
-            var status = WindowsNative.NtCreateFile(out var raw, access, ref attributes, out _, 0, 0x80, share, disposition,
+            var status = WindowsNative.NtCreateFile(out var handle, access, ref attributes, out _, 0, 0x80, share, disposition,
                 0x00200020u | (directory ? 1u : 0x40u), 0, 0);
             if (status < 0)
+            {
+                handle.Dispose();
                 throw new StoreException(CommitOutcome.RejectedBeforePublication, "native-open-"+WindowsNative.RtlNtStatusToDosError(status));
-            var handle = new SafeFileHandle(raw, true);
+            }
             try { Validate(handle, directory, securityCheck); return handle; }
             catch { handle.Dispose(); throw; }
         }
@@ -93,11 +96,15 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         {
             var size=WindowsNative.GetSecurityDescriptorLength(descriptor); if(size is 0 or >65536) Fail("security-size");
             var data = new byte[size]; Marshal.Copy(descriptor, data, 0, data.Length);
-            var security = new RawSecurityDescriptor(data, 0);
-            if (security.Owner?.Value != _owner || (security.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0 || security.DiscretionaryAcl is not { Count: 1 }) Fail("unsafe-acl");
-            if (security.DiscretionaryAcl![0] is not CommonAce ace || ace.AceQualifier != AceQualifier.AccessAllowed || ace.SecurityIdentifier.Value != _owner || ace.AccessMask != 0x1f01ff || ace.AceFlags != AceFlags.None) Fail("unsafe-acl");
+            ValidateSecurityDescriptor(new RawSecurityDescriptor(data, 0), _owner);
         }
         finally { WindowsNative.LocalFree(descriptor); }
+    }
+
+    internal static void ValidateSecurityDescriptor(RawSecurityDescriptor security, string owner)
+    {
+        if (security.Owner?.Value != owner || (security.ControlFlags & ControlFlags.DiscretionaryAclProtected) == 0 || security.DiscretionaryAcl is not { Count: 1 }) Fail("unsafe-acl");
+        if (security.DiscretionaryAcl![0] is not CommonAce ace || ace.IsCallback || ace.AceQualifier != AceQualifier.AccessAllowed || ace.SecurityIdentifier.Value != owner || ace.AccessMask != 0x1f01ff || ace.AceFlags != AceFlags.None) Fail("unsafe-acl");
     }
 
     public long Read(byte kind, string writeId, Span<byte> destination, CancellationToken cancellationToken)
@@ -120,7 +127,6 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         if(Convert.ToHexStringLower(header.AsSpan(44,16))!=name[..^5]) Fail("backup-identity");
         return header;
     }
-    internal string[] BackupNames() => Directory.EnumerateFiles(Path.Combine(_path, ".backup")).Select(Path.GetFileName).Select(s => s!).ToArray();
     private SafeFileHandle OpenRead(string directory,string name,CancellationToken token)
     {
         // Windows may release a killed process's lock before completing all file-handle cleanup.
@@ -165,9 +171,13 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     internal void SaveBackup(byte[] header, IStoreFaults faults, CancellationToken token)
     {
         var name = Convert.ToHexStringLower(header.AsSpan(44,16))+".json";
-        if (BackupNames().Contains(name, StringComparer.Ordinal))
+        byte[]? existing = null;
+        try { existing = ReadBackup(name, token); }
+        catch (StoreException e) when (e.Code == "native-open-2") { } // Only a missing exact name permits creation.
+        if (existing is not null)
         {
-            if (!ReadBackup(name,token).AsSpan().SequenceEqual(header)) Fail("backup-collision");
+            if (!existing.AsSpan().SequenceEqual(header)) Fail("backup-collision");
+            FlushDirectory(".backup", faults);
             return;
         }
         var temp = Stage(VaultFormat.EncodeWrapper(header), faults, false, token);
@@ -197,6 +207,12 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         }
         catch { handle.Dispose(); throw; } // Keep encrypted staging evidence; no destructive cleanup.
     }
+    internal void ValidateNamespace()
+    {
+        foreach (var directory in _directories.Values) Validate(directory, true);
+        if (_lock is null) Fail("lock-closed");
+        Validate(_lock!, false);
+    }
     internal void PublishRoot(SafeFileHandle staged, bool replace) => Rename(staged,_directories[""],"vault.json",replace);
     internal void FlushRootNamespace(IStoreFaults faults) { FlushDirectory(".tmp",faults); FlushDirectory("",faults); }
     private void FlushDirectory(string name,IStoreFaults faults)
@@ -207,11 +223,13 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     }
     private static void Rename(SafeFileHandle file, SafeFileHandle destination, string name, bool replace)
     {
-        Component(name); var size=checked(20+name.Length*2); var info=Marshal.AllocHGlobal(size);
+        Component(name); using var destinationLease = new NativeHandleLease(destination);
+        // WDK requires sizeof(FILE_RENAME_INFORMATION) plus filename bytes.
+        var size=checked(24+name.Length*2); var info=Marshal.AllocHGlobal(size);
         try
         {
             new Span<byte>((void*)info,size).Clear(); Marshal.WriteByte(info,replace?(byte)1:(byte)0);
-            Marshal.WriteIntPtr(info,8,destination.DangerousGetHandle()); Marshal.WriteInt32(info,16,name.Length*2);
+            Marshal.WriteIntPtr(info,8,destinationLease.Value); Marshal.WriteInt32(info,16,name.Length*2);
             name.AsSpan().CopyTo(new Span<char>((void*)(info+20),name.Length));
             var status=WindowsNative.NtSetInformationFile(file,out _,info,(uint)size,10);
             if(status<0) throw new StoreException(CommitOutcome.Indeterminate,"native-rename-"+WindowsNative.RtlNtStatusToDosError(status));

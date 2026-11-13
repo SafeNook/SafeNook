@@ -229,3 +229,10 @@ fault/process-crash/ACL/reparse/Native AOT проверки отделены о�
 F-7 реализована частично: внутренний qualification API; production writable mode закрыт,
 GC не удаляет данные, Linux/macOS adapters и power-loss qualification не выполнены.
 F-7 целиком не отмечается завершённой; пользовательские vault/backup/restore команды не добавлены.
+
+## 13. SN-003B3: Windows security и durability review
+
+[Отчёт](SN-003B3-SECURITY-REVIEW.md): усилены native handle lifetime, ACL, backup lookup и
+проверки root/namespace перед публикацией. ABI сверена с Windows SDK; добавлены регрессии.
+Production writes и GC остаются выключенными; F-7 не завершена. Независимый внешний review,
+реальные quota/ENOSPC и power-cut испытания остаются открытыми; подготовлены план стенда и checklist.

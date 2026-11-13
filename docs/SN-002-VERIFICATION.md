@@ -149,3 +149,10 @@ filesystem, output UX, cross-platform or external security-review release gates.
 handle-relative IO, ACL/reparse/link checks, commit fault injection, independent-process
 crashes and Native AOT from unexecuted power-loss qualification. V07/V09/V11 are partial,
 not cross-platform completion. Production writable mode and destructive GC remain blocked.
+
+## SN-003B3 Windows review
+
+[Security review and regression evidence](SN-003B3-SECURITY-REVIEW.md) distinguish process-crash
+checks from unexecuted destructive power-cut/controller/quota qualification. The
+[production-write checklist](SN-003B3-PRODUCTION-WRITES-CHECKLIST.md) remains open; no release gate
+is closed automatically.

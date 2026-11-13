@@ -13,7 +13,7 @@ internal static unsafe partial class WindowsNative
     { internal uint Attributes; internal long Creation, Access, Write; internal uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow; }
     [StructLayout(LayoutKind.Sequential)] internal struct Overlapped
     { internal nuint Internal, InternalHigh; internal uint Offset, OffsetHigh; internal nint Event; }
-    [LibraryImport("ntdll.dll")] internal static partial int NtCreateFile(out nint handle, uint access, ref ObjectAttributes attributes, out IoStatus status, nint size, uint fileAttributes, uint share, uint disposition, uint options, nint ea, uint eaLength);
+    [LibraryImport("ntdll.dll")] internal static partial int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes, out IoStatus status, nint size, uint fileAttributes, uint share, uint disposition, uint options, nint ea, uint eaLength);
     [LibraryImport("ntdll.dll")] internal static partial int NtSetInformationFile(SafeFileHandle handle, out IoStatus status, nint information, uint length, uint informationClass);
     [LibraryImport("ntdll.dll")] internal static partial uint RtlNtStatusToDosError(int status);
     [LibraryImport("kernel32.dll", EntryPoint="CreateFileW", StringMarshalling=StringMarshalling.Utf16, SetLastError=true)] internal static partial SafeFileHandle CreateFile(string name, uint access, uint share, nint security, uint disposition, uint flags, nint template);
@@ -27,4 +27,18 @@ internal static unsafe partial class WindowsNative
     [LibraryImport("advapi32.dll")] internal static partial uint GetSecurityInfo(SafeFileHandle handle, uint type, uint flags, out nint owner, out nint group, out nint dacl, out nint sacl, out nint descriptor);
     [LibraryImport("advapi32.dll")] internal static partial uint GetSecurityDescriptorLength(nint descriptor);
     [LibraryImport("kernel32.dll")] internal static partial nint LocalFree(nint memory);
+}
+
+// A SafeHandle embedded as a raw value in a native structure is not retained by the marshaller.
+internal sealed class NativeHandleLease : IDisposable
+{
+    private SafeFileHandle? _handle;
+    internal nint Value { get; }
+    internal NativeHandleLease(SafeFileHandle handle)
+    {
+        var added = false;
+        try { handle.DangerousAddRef(ref added); Value = handle.DangerousGetHandle(); _handle = handle; }
+        catch { if (added) handle.DangerousRelease(); throw; }
+    }
+    public void Dispose() => Interlocked.Exchange(ref _handle, null)?.DangerousRelease();
 }

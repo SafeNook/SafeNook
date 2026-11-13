@@ -347,6 +347,152 @@ public sealed class StoreTests
         Assert.Throws<StoreException>(()=>_ = store.ItemIds); Assert.Equal(selectedRoot,File.ReadAllBytes(Path.Combine(path,"vault.json")));
     }
 
+    [Fact]
+    public void ManagedNativeLayoutsMatchWindowsSdkX64()
+    {
+        Assert.Equal(16,Marshal.SizeOf<WindowsNative.UnicodeString>());
+        Assert.Equal(48,Marshal.SizeOf<WindowsNative.ObjectAttributes>());
+        Assert.Equal(16,Marshal.SizeOf<WindowsNative.IoStatus>());
+        Assert.Equal(52,Marshal.SizeOf<WindowsNative.FileInfo>());
+        Assert.Equal(32,Marshal.SizeOf<WindowsNative.Overlapped>());
+        Assert.Equal((nint)8,Marshal.OffsetOf<WindowsNative.UnicodeString>("Buffer"));
+        Assert.Equal((nint)8,Marshal.OffsetOf<WindowsNative.ObjectAttributes>("RootDirectory"));
+        Assert.Equal((nint)16,Marshal.OffsetOf<WindowsNative.ObjectAttributes>("ObjectName"));
+        Assert.Equal((nint)24,Marshal.OffsetOf<WindowsNative.ObjectAttributes>("Attributes"));
+        Assert.Equal((nint)32,Marshal.OffsetOf<WindowsNative.ObjectAttributes>("SecurityDescriptor"));
+        Assert.Equal((nint)40,Marshal.OffsetOf<WindowsNative.ObjectAttributes>("SecurityQualityOfService"));
+        Assert.Equal((nint)8,Marshal.OffsetOf<WindowsNative.IoStatus>("Information"));
+        Assert.Equal((nint)4,Marshal.OffsetOf<WindowsNative.FileInfo>("Creation"));
+        Assert.Equal((nint)48,Marshal.OffsetOf<WindowsNative.FileInfo>("IndexLow"));
+        Assert.Equal((nint)24,Marshal.OffsetOf<WindowsNative.Overlapped>("Event"));
+    }
+
+    [Fact]
+    public void RawNativeHandleLeaseSurvivesOwnerDisposalAndReleasesOnce()
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); using(var store=Create(path,f)) { }
+        var owner=File.OpenHandle(Path.Combine(path,"vault.json"),FileMode.Open,FileAccess.Read,FileShare.Read);
+        using var lease=new NativeHandleLease(owner); owner.Dispose();
+        using var borrowed=new Microsoft.Win32.SafeHandles.SafeFileHandle(lease.Value,false);
+        Assert.Equal(1u,WindowsNative.GetFileType(borrowed));
+        lease.Dispose(); lease.Dispose();
+        Assert.True(owner.IsClosed);
+        Assert.Throws<ObjectDisposedException>(()=>new NativeHandleLease(owner));
+    }
+
+    [Fact]
+    public void ConditionalCallbackAceIsNotAnOwnerOnlyAcl()
+    {
+        using var identity=System.Security.Principal.WindowsIdentity.GetCurrent(); var owner=identity.User!;
+        var acl=new System.Security.AccessControl.RawAcl(2,1);
+        acl.InsertAce(0,new System.Security.AccessControl.CommonAce(System.Security.AccessControl.AceFlags.None,
+            System.Security.AccessControl.AceQualifier.AccessAllowed,0x1f01ff,owner,true,null));
+        var descriptor=new System.Security.AccessControl.RawSecurityDescriptor(
+            System.Security.AccessControl.ControlFlags.DiscretionaryAclPresent|System.Security.AccessControl.ControlFlags.DiscretionaryAclProtected,
+            owner,owner,null,acl);
+        Assert.Throws<StoreException>(()=>WindowsFileSystem.ValidateSecurityDescriptor(descriptor,owner.Value));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void RootChangedOrRemovedBeforePublicationInvalidatesState(bool remove)
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); using var store=Create(path,f);
+        var root=Path.Combine(path,"vault.json");
+        var result=Commit(store,f.Next(store.Header),new ActionAt(CommitStep.RootFlushed,()=>
+        {
+            if(remove) File.Delete(root);
+            else { var bytes=File.ReadAllBytes(root); bytes[^1]^=1; File.WriteAllBytes(root,bytes); }
+        }));
+        Assert.Equal(CommitOutcome.RecoveryRequired,result.Outcome);
+        Assert.Throws<StoreException>(()=>_ = store.ItemIds);
+        AssertEncryptedStaging(path);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void CandidateDependencyRemovedOrReplacedAfterValidationIsNotAcknowledged(bool replace)
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); using(var store=Create(path,f))
+        {
+            var next=f.Next(store.Header); var manifest=Path.Combine(path,"manifests",Convert.ToHexStringLower(next.Header.AsSpan(100,32))+".manifest");
+            var result=Commit(store,next,new ActionAt(CommitStep.ManifestVerified,()=>
+            {
+                if(replace) File.WriteAllBytes(manifest,new byte[32]); else File.Delete(manifest);
+            }));
+            Assert.Equal(CommitOutcome.Indeterminate,result.Outcome);
+            Assert.Throws<StoreException>(()=>_ = store.ItemIds);
+        }
+        Assert.Throws<StoreException>(()=>Open(path)); AssertEncryptedStaging(path);
+    }
+
+    [Fact]
+    public void EveryRetainedGenerationIsAuthenticatedAndUnknownFilesAreRetained()
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); var roots=new List<string>();
+        using(var store=Create(path,f))
+        {
+            for(var revision=1;revision<=4;revision++)
+            {
+                roots.Add(Convert.ToHexStringLower(store.Header.AsSpan(44,16)));
+                Assert.Equal(CommitOutcome.Committed,Commit(store,f.Next(store.Header,revision,deleted:revision==4)).Outcome);
+            }
+            foreach(var root in roots) store.VerifyBackup(root,CredentialKind.Password,GenerationFixture.Password,Token);
+            var unknown=Path.Combine(path,".backup","unknown.bin"); File.WriteAllBytes(unknown,[19,37]);
+            var before=Directory.GetFiles(path,"*",SearchOption.AllDirectories).Order().ToArray();
+            Assert.StartsWith("Refused:",store.GarbageCollectionStatus);
+            Assert.Equal(before,Directory.GetFiles(path,"*",SearchOption.AllDirectories).Order().ToArray());
+            Assert.Equal(new byte[]{19,37},File.ReadAllBytes(unknown));
+        }
+        foreach(var root in roots) Assert.InRange(QualificationStore.InspectRecoveryCandidate(path,root,CredentialKind.Password,GenerationFixture.Password,GenerationFixture.Policy(),Token),1ul,4ul);
+    }
+
+    [Fact]
+    public void ExactBackupReadIgnoresUnknownDirectoryEntriesAndRechecksExistingBackup()
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); using var store=Create(path,f); var root=store.Header;
+        Assert.Equal(CommitOutcome.RejectedBeforePublication,Commit(store,f.Next(root),new FailAt(CommitStep.BackupWritten)).Outcome);
+        Directory.CreateDirectory(Path.Combine(path,".backup","unrelated-directory"));
+        File.WriteAllBytes(Path.Combine(path,".backup","unknown.bin"),[1,2,3]);
+        Assert.Equal(CommitOutcome.Committed,Commit(store,f.Next(root)).Outcome);
+        store.VerifyBackup(Convert.ToHexStringLower(root.AsSpan(44,16)),CredentialKind.Password,GenerationFixture.Password,Token);
+    }
+
+    [Fact]
+    public void CancelledCreationDoesNotCreateFilesystemEntries()
+    {
+        var path=FreshPath(); using var cancellation=new CancellationTokenSource(); cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(()=>new WindowsFileSystem(path,true,cancellation.Token));
+        Assert.False(Directory.Exists(path));
+    }
+
+    [Fact]
+    public void PreviousRootDamagedBeforePublicationBlocksCommit()
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); using var store=Create(path,f); var old=store.Header;
+        var backup=Path.Combine(path,".backup",Convert.ToHexStringLower(old.AsSpan(44,16))+".json");
+        var result=Commit(store,f.Next(old),new ActionAt(CommitStep.RootFlushed,()=>File.WriteAllBytes(backup,[0])));
+        Assert.Equal(CommitOutcome.RecoveryRequired,result.Outcome);
+        Assert.Equal(old,VaultFormat.DecodeWrapper(File.ReadAllBytes(Path.Combine(path,"vault.json"))));
+    }
+
+    [Theory]
+    [InlineData((int)CommitStep.BeforePublish)] [InlineData((int)CommitStep.AfterPublish)]
+    public void NamespaceAclChangedDuringCommitIsNotAcknowledged(int step)
+    {
+        var path=FreshPath(); using var f=new GenerationFixture(); using var store=Create(path,f);
+        var result=Commit(store,f.Next(store.Header),new ActionAt((CommitStep)step,()=>
+        {
+            using var command=Start("icacls.exe",[Path.Combine(path,"items"),"/grant","*S-1-1-0:(RX)"]);
+            Assert.True(command.WaitForExit(10000)); Assert.Equal(0,command.ExitCode);
+        }));
+        Assert.Equal((CommitStep)step==CommitStep.BeforePublish?CommitOutcome.RecoveryRequired:CommitOutcome.Indeterminate,result.Outcome);
+        Assert.Throws<StoreException>(()=>_ = store.ItemIds);
+    }
+
+    private sealed class ActionAt(CommitStep step,Action action):IStoreFaults
+    { public void At(CommitStep current) { if(current==step) action(); } }
+
     private static void AssertEncryptedStaging(string path)
     {
         foreach(var file in Directory.GetFiles(Path.Combine(path,".tmp")))
