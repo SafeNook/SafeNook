@@ -29,6 +29,9 @@ public sealed class VaultAdmissionPolicy
         if (bytes < 67108864) throw new VaultDataException(VaultDataError.ResourceLimit);
         return new VaultAdmissionPolicy((uint)(bytes / 1024), bytes);
     }
+    /// <summary>Reserves trusted caller-owned operation buffers; dispose the lease after releasing those buffers.</summary>
+    public IDisposable ReserveTransientBytes(long bytes) => Reserve(bytes);
+
     internal IDisposable Reserve(long bytes)
     {
         lock (_gate)

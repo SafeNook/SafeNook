@@ -8,9 +8,14 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/SafeNook.Core/SafeNook.Core.csproj" />
+    <Project Path="src/SafeNook.Storage/SafeNook.Storage.csproj" />
     <Project Path="src/SafeNook.Cli/SafeNook.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SafeNook.Core.Tests/SafeNook.Core.Tests.csproj" />
+    <Project Path="tests/SafeNook.Storage.Tests/SafeNook.Storage.Tests.csproj" />
+  </Folder>
+  <Folder Name="/spikes/">
+    <Project Path="spikes/StoreQualification/StoreQualification.csproj" />
   </Folder>
 </Solution>
