@@ -7,6 +7,7 @@ public sealed class StoreException(CommitOutcome outcome, string code) : Excepti
 {
     public CommitOutcome Outcome { get; } = outcome;
     public string Code { get; } = code;
+    internal StorageDiagnostics? Diagnostic { get; init; }
 }
 /// <summary>Production writes remain closed until filesystem power-loss qualification is recorded.</summary>
 public static class StorageSupport

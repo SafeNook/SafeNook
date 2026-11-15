@@ -15,13 +15,15 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     private readonly Dictionary<string, SafeFileHandle> _directories = new(StringComparer.Ordinal);
     private readonly string _owner = CurrentOwner();
     private nint _descriptor;
+    private readonly StorageDiagnostics _diagnostics;
     private SafeFileHandle? _lock;
     internal bool DirectoryFlushAvailable { get; private set; } = true;
 
     private static string CurrentOwner() { using var identity=WindowsIdentity.GetCurrent(); return identity.User!.Value; }
 
-    internal WindowsFileSystem(string path, bool create, CancellationToken token)
+    internal WindowsFileSystem(string path, bool create, CancellationToken token, StorageDiagnostics? diagnostics = null)
     {
+        _diagnostics=diagnostics??new StorageDiagnostics();
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64) throw new PlatformNotSupportedException("Only Windows x64 has a qualification adapter.");
         if (path.Length < 4 || !char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] != '\\' || path.Contains('/')) Fail("invalid-root-path");
         token.ThrowIfCancellationRequested();
@@ -29,37 +31,49 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         var names = rootPath[3..].Split('\\'); foreach (var name in names) Component(name);
         try
         {
-            if (!WindowsNative.ConvertDescriptor("O:"+_owner+"D:P(A;;FA;;;"+_owner+")", 1, out _descriptor, out _)) Fail("security-descriptor");
-            if(WindowsNative.GetDriveType(path[..3])!=3) Fail("unqualified-drive-type");
+            _diagnostics.Stage=StorageStage.SecurityDescriptor;
+            if (!WindowsNative.ConvertDescriptor("O:"+_owner+"D:P(A;;FA;;;"+_owner+")", 1, out _descriptor, out _)) NativeFail("security-descriptor");
+            _diagnostics.Stage=StorageStage.DriveType;
+            _diagnostics.DriveType=WindowsNative.GetDriveType(path[..3]);
+            if(_diagnostics.DriveType!=3) Fail("unqualified-drive-type");
+            _diagnostics.Stage=StorageStage.VolumeRoot;
             var drive = WindowsNative.CreateFile("\\\\?\\"+path[..3], 0x80020000, 3, 0, 3, 0x02200000, 0);
-            if (drive.IsInvalid) { drive.Dispose(); Fail("open-volume-root"); }
+            if (drive.IsInvalid) { var error=Marshal.GetLastPInvokeError(); drive.Dispose(); NativeFail("open-volume-root",(uint)error); }
             _pinned.Add(drive); Validate(drive, true, false);
             char* fs = stackalloc char[32];
-            if (!WindowsNative.VolumeInfo(drive, null, 0, out _, out _, out _, fs, 32) || new string(fs) != "NTFS") Fail("unqualified-filesystem");
+            _diagnostics.Stage=StorageStage.VolumeInfo;
+            if (!WindowsNative.VolumeInfo(drive, null, 0, out _, out _, out var volumeFlags, fs, 32)) NativeFail("volume-info");
+            _diagnostics.VolumeFlags=volumeFlags;
+            _diagnostics.FileSystem=new string(fs)=="NTFS"?StorageFileSystem.Ntfs:StorageFileSystem.Other;
+            if (_diagnostics.FileSystem!=StorageFileSystem.Ntfs) Fail("unqualified-filesystem");
             var parent = drive;
             for (var i = 0; i < names.Length; i++)
             {
                 var last = i == names.Length - 1;
+                _diagnostics.Stage=last?StorageStage.VaultDirectory:StorageStage.Ancestor;
                 var next = OpenRelative(parent, names[i], true, last && create ? 2u : 1u, last, false, 3, last);
                 _pinned.Add(next); parent = next;
             }
             _directories.Add("", parent);
             foreach (var name in new[] { "items", "blobs", "manifests", ".backup", ".tmp" })
             {
+                _diagnostics.Stage=StorageStage.ChildDirectory;
                 var directory = OpenRelative(parent, name, true, create ? 2u : 1u, true, share: 3);
                 _pinned.Add(directory); _directories.Add(name, directory);
             }
+            _diagnostics.Stage=StorageStage.Lock;
             _lock = OpenRelative(parent, ".lock", false, create ? 2u : 1u, true, false, 3);
             var overlapped = new WindowsNative.Overlapped();
             while (!WindowsNative.LockFileEx(_lock, 3, 0, uint.MaxValue, uint.MaxValue, ref overlapped))
             {
-                if (Marshal.GetLastPInvokeError() != 33) Fail("lock-unavailable");
+                if (Marshal.GetLastPInvokeError() != 33) NativeFail("lock-unavailable");
                 token.ThrowIfCancellationRequested();
                 if (token.WaitHandle.WaitOne(20)) token.ThrowIfCancellationRequested();
             }
+            _diagnostics.LockAcquired=true;
             token.ThrowIfCancellationRequested();
         }
-        catch { Dispose(); throw; }
+        catch(Exception e) { _diagnostics.Capture(e); Dispose(); throw; }
     }
 
     private SafeFileHandle OpenRelative(SafeFileHandle parent, string name, bool directory, uint disposition,
@@ -77,6 +91,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
                 0x00200020u | (directory ? 1u : 0x40u), 0, 0);
             if (status < 0)
             {
+                _diagnostics.Native(WindowsNative.RtlNtStatusToDosError(status),status);
                 handle.Dispose();
                 throw new StoreException(CommitOutcome.RejectedBeforePublication, "native-open-"+WindowsNative.RtlNtStatusToDosError(status));
             }
@@ -88,10 +103,11 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     private void Validate(SafeFileHandle handle, bool directory, bool checkSecurity = true)
     {
         if (WindowsNative.GetFileType(handle) != 1) Fail("file-type");
-        if (!WindowsNative.GetFileInformationByHandle(handle, out var info)) Fail("file-info");
+        if (!WindowsNative.GetFileInformationByHandle(handle, out var info)) NativeFail("file-info");
         if ((info.Attributes & 0x400) != 0 || ((info.Attributes & 0x10) != 0) != directory || (!directory && info.Links != 1)) Fail("link-or-file-type");
         if (!checkSecurity) return;
-        if (WindowsNative.GetSecurityInfo(handle, 1, 5, out _, out _, out _, out _, out var descriptor) != 0) Fail("read-security");
+        var securityResult=WindowsNative.GetSecurityInfo(handle, 1, 5, out _, out _, out _, out _, out var descriptor);
+        if (securityResult != 0) NativeFail("read-security",securityResult);
         try
         {
             var size=WindowsNative.GetSecurityDescriptorLength(descriptor); if(size is 0 or >65536) Fail("security-size");
@@ -134,9 +150,10 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         for(var attempt=0;;attempt++)
         {
             token.ThrowIfCancellationRequested();
+            _diagnostics.Stage=StorageStage.FileOpen;
             try { return OpenRelative(_directories[directory],name,false,1); }
             catch(StoreException e) when(e.Code=="native-open-32" && attempt<50)
-            { if(token.WaitHandle.WaitOne(10)) token.ThrowIfCancellationRequested(); }
+            { _diagnostics.ClearExpectedNativeFailure(); if(token.WaitHandle.WaitOne(10)) token.ThrowIfCancellationRequested(); }
         }
     }
 
@@ -145,7 +162,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         token.ThrowIfCancellationRequested();
         using var handle = OpenRead(directory,name,token);
         var length = RandomAccess.GetLength(handle);
-        if (!WindowsNative.GetFileInformationByHandle(handle, out var before)) Fail("read-identity");
+        if (!WindowsNative.GetFileInformationByHandle(handle, out var before)) NativeFail("read-identity");
         var wanted = (int)Math.Min(length, destination.Length); var offset = 0;
         while (offset < wanted)
         {
@@ -154,7 +171,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         }
         Span<byte> extra = stackalloc byte[1];
         if (RandomAccess.Read(handle, extra, length) != 0 || RandomAccess.GetLength(handle) != length) Fail("changed-length");
-        Validate(handle, false); if (!WindowsNative.GetFileInformationByHandle(handle, out var after)) Fail("read-identity");
+        Validate(handle, false); if (!WindowsNative.GetFileInformationByHandle(handle, out var after)) NativeFail("read-identity");
         if (before.Volume != after.Volume || before.IndexLow != after.IndexLow || before.IndexHigh != after.IndexHigh) Fail("changed-identity");
         return length;
     }
@@ -173,7 +190,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         var name = Convert.ToHexStringLower(header.AsSpan(44,16))+".json";
         byte[]? existing = null;
         try { existing = ReadBackup(name, token); }
-        catch (StoreException e) when (e.Code == "native-open-2") { } // Only a missing exact name permits creation.
+        catch (StoreException e) when (e.Code == "native-open-2") { _diagnostics.ClearExpectedNativeFailure(); } // Only a missing exact name permits creation.
         if (existing is not null)
         {
             if (!existing.AsSpan().SequenceEqual(header)) Fail("backup-collision");
@@ -194,11 +211,14 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         {
             var count = faults.WriteLength(bytes.Length);
             if (count < 0 || count > bytes.Length) Fail("write-contract");
+            _diagnostics.Stage=StorageStage.ObjectWrite;
             RandomAccess.Write(handle, bytes.AsSpan(0,count), 0);
             faults.At(root ? CommitStep.RootWritten : CommitStep.ObjectWritten);
             if (count != bytes.Length || RandomAccess.GetLength(handle) != bytes.Length) Fail("short-write");
             faults.BeforeFlush(false);
-            if (!WindowsNative.FlushFileBuffers(handle)) Fail("file-flush");
+            _diagnostics.Stage=StorageStage.FileFlush;
+            if (!WindowsNative.FlushFileBuffers(handle)) NativeFail("file-flush");
+            _diagnostics.FileFlushed=true;
             faults.At(root ? CommitStep.RootFlushed : CommitStep.ObjectFlushed);
             var readback = new byte[bytes.Length]; var offset=0;
             while(offset<readback.Length) { var n=RandomAccess.Read(handle,readback.AsSpan(offset),offset); if(n==0) Fail("short-readback"); offset+=n; }
@@ -211,7 +231,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     {
         foreach (var directory in _directories.Values) Validate(directory, true);
         if (_lock is null) Fail("lock-closed");
-        Validate(_lock!, false);
+        Validate(_lock!, false); _diagnostics.NamespaceValidated=true;
     }
     internal void PublishRoot(SafeFileHandle staged, bool replace) => Rename(staged,_directories[""],"vault.json",replace);
     internal void FlushRootNamespace(IStoreFaults faults) { FlushDirectory(".tmp",faults); FlushDirectory("",faults); }
@@ -219,9 +239,11 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     {
         // Success is not power-loss qualification; failure must still abort or make publication uncertain.
         faults.BeforeFlush(true);
-        if (!WindowsNative.FlushFileBuffers(_directories[name])) { DirectoryFlushAvailable=false; Fail("directory-flush"); }
+        _diagnostics.Stage=StorageStage.DirectoryFlush;
+        if (!WindowsNative.FlushFileBuffers(_directories[name])) { DirectoryFlushAvailable=false; NativeFail("directory-flush"); }
+        _diagnostics.DirectoryFlushed=true;
     }
-    private static void Rename(SafeFileHandle file, SafeFileHandle destination, string name, bool replace)
+    private void Rename(SafeFileHandle file, SafeFileHandle destination, string name, bool replace)
     {
         Component(name); using var destinationLease = new NativeHandleLease(destination);
         // WDK requires sizeof(FILE_RENAME_INFORMATION) plus filename bytes.
@@ -231,8 +253,10 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
             new Span<byte>((void*)info,size).Clear(); Marshal.WriteByte(info,replace?(byte)1:(byte)0);
             Marshal.WriteIntPtr(info,8,destinationLease.Value); Marshal.WriteInt32(info,16,name.Length*2);
             name.AsSpan().CopyTo(new Span<char>((void*)(info+20),name.Length));
+            _diagnostics.Stage=StorageStage.Rename;
             var status=WindowsNative.NtSetInformationFile(file,out _,info,(uint)size,10);
-            if(status<0) throw new StoreException(CommitOutcome.Indeterminate,"native-rename-"+WindowsNative.RtlNtStatusToDosError(status));
+            if(status<0) { _diagnostics.Native(WindowsNative.RtlNtStatusToDosError(status),status); throw new StoreException(CommitOutcome.Indeterminate,"native-rename-"+WindowsNative.RtlNtStatusToDosError(status)); }
+            _diagnostics.Renamed=true;
         }
         finally { Marshal.FreeHGlobal(info); }
     }
@@ -241,6 +265,12 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     private static void Component(string name)
     {
         if(name.Length is <1 or >255 || name is "." or ".." || name.EndsWith('.') || name.EndsWith(' ') || name.IndexOfAny(['\\','/',':','\0','*','?','"','<','>','|'])>=0) Fail("invalid-component");
+    }
+    [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+    private void NativeFail(string code,uint? error=null)
+    {
+        _diagnostics.Native(error??unchecked((uint)Marshal.GetLastPInvokeError()));
+        throw new StoreException(CommitOutcome.RejectedBeforePublication,code);
     }
     [System.Diagnostics.CodeAnalysis.DoesNotReturn] private static void Fail(string code) => throw new StoreException(CommitOutcome.RejectedBeforePublication,code);
     public void Dispose()

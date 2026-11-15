@@ -45,9 +45,16 @@ jobs:
         run: dotnet restore
 
       - name: Build
+        id: build
         run: dotnet build --no-restore --configuration Release
 
+      - name: Probe Windows storage capabilities
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/Test-StorageCapabilities.ps1
+
       - name: Test
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --no-build --configuration Release --minimum-expected-tests 16
 
       - name: Test CLI contract

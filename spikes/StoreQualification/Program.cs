@@ -3,6 +3,27 @@ using SafeNook.Storage;
 using SafeNook.StoreTestData;
 if(!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
 var path=args[0];
+if(args.Length>1 && args[1]=="probe")
+{
+    var diagnostic=new StorageDiagnostics();
+    try
+    {
+        using var fixtureProbe=new GenerationFixture(); var initial=fixtureProbe.Initial();
+        using var files=new WindowsFileSystem(path,true,CancellationToken.None,diagnostic);
+        files.ValidateNamespace();
+        foreach(var file in initial.Objects) files.InstallObject(file,new NoStoreFaults(),CancellationToken.None);
+        var staged=files.StageRoot(initial.Header,new NoStoreFaults(),CancellationToken.None);
+        using(staged.Handle) files.PublishRoot(staged.Handle,false);
+        files.FlushRootNamespace(new NoStoreFaults()); files.ValidateNamespace();
+        if(!files.ReadRoot(CancellationToken.None).AsSpan().SequenceEqual(initial.Header)) throw new IOException();
+        Console.WriteLine("STORAGE_CAPABILITIES_PASS "+diagnostic.SafeSummary());
+    }
+    catch(Exception e)
+    {
+        diagnostic.Capture(e); Console.WriteLine("STORAGE_CAPABILITIES_FAIL "+diagnostic.SafeSummary()); Environment.ExitCode=2;
+    }
+    return;
+}
 if(args.Length>1 && args[1]=="verify")
 {
     try { using var checkedStore=QualificationStore.Open(path,CredentialKind.Password,GenerationFixture.Password,GenerationFixture.Policy(),CancellationToken.None); Console.WriteLine("VERIFIED "+checkedStore.ItemIds.Length); }

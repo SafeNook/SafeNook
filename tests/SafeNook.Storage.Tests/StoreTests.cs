@@ -21,9 +21,18 @@ public sealed class StoreTests
         while(d is not null && !File.Exists(Path.Combine(d.FullName,"SafeNook.slnx"))) d=d.Parent;
         return d?.FullName??throw new InvalidOperationException("Test workspace unavailable.");
     }
-    private static string FreshPath()=>Path.Combine(Repo,"artifacts","sn-003b2-test-"+Guid.NewGuid().ToString("N"));
+    private static string FreshPath()=>FreshPathUnder(Path.Combine(Repo,"artifacts"));
+    private static string FreshPathUnder(string parent)
+    {
+        // Test infrastructure owns only the parent. The store creates and validates the vault itself.
+        Directory.CreateDirectory(parent);
+        return Path.Combine(parent,"sn-003b2-test-"+Guid.NewGuid().ToString("N"));
+    }
     private static QualificationStore Create(string path,GenerationFixture f,IStoreFaults? faults=null)
-        =>QualificationStore.Create(path,f.Initial(),GenerationFixture.Password,f.Recovery.Span,()=>f.Recovery.Span.ToArray(),GenerationFixture.Policy(),faults??new NoStoreFaults(),Token);
+    {
+        try { return QualificationStore.Create(path,f.Initial(),GenerationFixture.Password,f.Recovery.Span,()=>f.Recovery.Span.ToArray(),GenerationFixture.Policy(),faults??new NoStoreFaults(),Token); }
+        catch(StoreException e) { TestContext.Current.TestOutputHelper?.WriteLine(e.Diagnostic?.SafeSummary()??"stage=Unknown; category=Unknown"); throw; }
+    }
     private static QualificationStore Open(string path)=>QualificationStore.Open(path,CredentialKind.Password,GenerationFixture.Password,GenerationFixture.Policy(),Token);
     private static QualificationCommit Commit(QualificationStore store,EncryptedGeneration next,IStoreFaults? faults=null,CancellationToken? token=null)
         =>store.Commit(next,CredentialKind.Password,GenerationFixture.Password,[],null,faults??new NoStoreFaults(),token??Token);
@@ -492,6 +501,34 @@ public sealed class StoreTests
 
     private sealed class ActionAt(CommitStep step,Action action):IStoreFaults
     { public void At(CommitStep current) { if(current==step) action(); } }
+
+    [Fact]
+    public void MissingTestParentReproducesNativeFailureAndSetupFixesIt()
+    {
+        var missing=Path.Combine(Repo,"artifacts","missing-parent-"+Guid.NewGuid().ToString("N"));
+        using var f=new GenerationFixture();
+        var failed=Assert.Throws<StoreException>(()=>Create(Path.Combine(missing,"vault"),f));
+        Assert.Equal("create",failed.Code);
+        Assert.NotNull(failed.Diagnostic);
+        Assert.Equal(StorageStage.Ancestor,failed.Diagnostic.Stage);
+        Assert.Equal(2u,failed.Diagnostic.Win32);
+        Assert.Equal(unchecked((int)0xc0000034),failed.Diagnostic.NtStatus);
+        Assert.False(Directory.Exists(missing));
+        var fixedPath=FreshPathUnder(missing);
+        using var opened=Create(fixedPath,f);
+        Assert.Empty(opened.ItemIds);
+    }
+
+    [Fact]
+    public void DiagnosticNeverIncludesExceptionMessageOrSecretPath()
+    {
+        var diagnostic=new StorageDiagnostics();
+        diagnostic.Capture(new IOException("secret-password recovery-key C:\\private\\vault"));
+        var safe=diagnostic.SafeSummary();
+        Assert.DoesNotContain("secret-password",safe); Assert.DoesNotContain("recovery-key",safe);
+        Assert.DoesNotContain("private",safe); Assert.DoesNotContain("vault",safe);
+        Assert.Equal(StorageFailure.Io,diagnostic.Failure);
+    }
 
     private static void AssertEncryptedStaging(string path)
     {

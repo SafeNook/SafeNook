@@ -48,17 +48,20 @@ internal sealed class QualificationStore : IDisposable
         Func<byte[]> confirmRecovery,VaultAdmissionPolicy policy,IStoreFaults faults,CancellationToken token)
     {
         WindowsFileSystem? files=null; AuthenticatedVaultState? state=null; var attempted=false;
+        var diagnostic=new StorageDiagnostics();
         try
         {
             ArgumentNullException.ThrowIfNull(confirmRecovery);
             using var snapshot=new Snapshot(input,policy);
             VaultFormat.ValidateHeader(snapshot.Header);
             if(BinaryPrimitives.ReadUInt64LittleEndian(snapshot.Header.AsSpan(60))!=1) Fail("initial-sequence");
+            diagnostic.Stage=StorageStage.KeySlots;
             using var passwordKey=OpenKey(snapshot.Header,CredentialKind.Password,password,policy,token);
             using var recoveryKey=OpenKey(snapshot.Header,CredentialKind.Recovery,recovery,policy,token);
             if(!CryptographicOperations.FixedTimeEquals(passwordKey.Span,recoveryKey.Span)) Fail("slot-key-mismatch");
+            diagnostic.Stage=StorageStage.RecoveryConfirmation;
             Confirm(confirmRecovery,recovery);
-            files=new WindowsFileSystem(path,true,token);
+            files=new WindowsFileSystem(path,true,token,diagnostic);
             var overlay=new OverlaySource(snapshot,files);
             state=Authenticate(snapshot.Header,CredentialKind.Password,password,overlay,policy,token);
             var manifest=Manifest(snapshot.Header,passwordKey.Span,overlay,policy,token);
@@ -79,7 +82,11 @@ internal sealed class QualificationStore : IDisposable
             faults.At(CommitStep.RootReadback);
             var result=new QualificationStore(files,policy,readback,state); files=null; state=null; return result;
         }
-        catch(Exception) { throw new StoreException(attempted?CommitOutcome.Indeterminate:CommitOutcome.RejectedBeforePublication,"create"); }
+        catch(Exception e)
+        {
+            diagnostic.Capture(e);
+            throw new StoreException(attempted?CommitOutcome.Indeterminate:CommitOutcome.RejectedBeforePublication,"create") { Diagnostic=diagnostic };
+        }
         finally { state?.Dispose(); files?.Dispose(); }
     }
 
