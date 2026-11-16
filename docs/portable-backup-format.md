@@ -1,8 +1,8 @@
 # Portable encrypted backup container — proposal v1
 
-Status: PROPOSED for SN-003D1; not implemented or approved. See
+Status: Accepted for SN-003D1 by the owner; implementation qualification is separate. See
 [ADR 0010](adr/0010-portable-backup-container.md). Existing directory snapshot rules in
-[storage protocol](storage-protocol.md) remain authoritative until owner approval.
+[storage protocol](storage-protocol.md) are extended by this approved container.
 This is framing of existing authenticated vault bytes, not a new cryptographic protocol.
 
 ## Binary encoding
@@ -85,7 +85,7 @@ do not claim no root exists or delete an authentic published vault. No automatic
 selection, overwrite, rollback repair, retry, GC or cleanup of unknown files. Wipe owned secret
 buffers on every exit. Process consistency is not power-loss qualification.
 
-## Application, CLI and production policy (proposed)
+## Application, CLI and production policy
 
 Application Backup, VerifyBackup, Restore accept explicit source/destination and credential kind;
 credentials only through existing protected interaction. Proposed CLI: backup --vault PATH --output
@@ -96,7 +96,7 @@ is read-only. Internal synthetic harness exercises writes, with no public qualif
 Physical format is portable; initial filesystem implementation remains Windows x64/local NTFS.
 Linux/macOS are not qualified merely because bytes are platform-independent.
 
-## Required validation after approval
+## Required implementation validation
 
 Deterministic framing fixtures built around existing independent crypto vectors; exact offsets,
 length sums, endian/order, unknown fields, truncation at every structural boundary, overflow,
@@ -111,4 +111,19 @@ existing empty/nonempty destination refusal. Before publication assert no vault.
 assert explicit uncertain outcome and reopen rather than automatic retry. Scan outputs/errors/
 staging for synthetic plaintext. Run Release build, full MTP/discovery, native AOT harness and
 CLI/gen regressions. Test all blobs: corrupt a blob whose item is never explicitly shown.
-These are planned tests, not executed results.
+Executed results and remaining limits are recorded in [SN-003D1 implementation](SN-003D1-IMPLEMENTATION.md).
+
+## Approved clarifications
+
+Backup creates a verified encrypted artifact; VerifyBackup performs complete credential-based
+cryptographic verification, including ALL blob AEAD tags; Restore verifies and publishes a new
+vault. These are separate operations, not aliases for normal Open.
+
+An optional SHA-256 of every byte of the complete archive may be returned for external comparison.
+It is not stored in the container, replaces no authentication check and prevents no rollback
+without a trusted external reference.
+
+The 2,147,483,648-byte ceiling is an independent defensive transport/parser bound, with room
+for the existing aggregate payload limits and framing. It does not raise any vault limit or
+require a 2 GiB allocation. Parsing is sequential, retaining bounded metadata and at most one
+object buffer; subsequent authenticated reads use a bounded offset index on the pinned input.

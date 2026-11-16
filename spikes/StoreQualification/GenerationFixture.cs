@@ -28,7 +28,7 @@ internal sealed class GenerationFixture:IDisposable
         return new(header,[file]);
     }
     internal EncryptedGeneration Next(byte[] oldHeader, int revision=1, bool deleted=false, bool includeBlob=false, bool reuse=false,
-        byte[]? password=null,byte[]? recovery=null)
+        byte[]? password=null,byte[]? recovery=null,byte[]? blobBytes=null)
     {
         var files=new List<byte[]>();
         if(!reuse && password is null && recovery is null)
@@ -36,7 +36,7 @@ internal sealed class GenerationFixture:IDisposable
             ItemPayload? payload=deleted?null:new NotePayload{Text="synthetic payload - never plaintext on disk"};
             if(includeBlob && !deleted)
             {
-                var bytes=ObjectCodec.Encrypt(Key.Span,new(VaultId,EpochId,BlobId,2,0),new byte[]{0,255,13,10},1024);
+                var bytes=ObjectCodec.Encrypt(Key.Span,new(VaultId,EpochId,BlobId,2,0),blobBytes??new byte[]{0,255,13,10},52428800);
                 files.Add(bytes); BlobReference=Reference(BlobId,0,bytes);
                 payload=new FilePayload {BlobId=BlobId.ToString("N"),OriginalName="synthetic.bin",MediaType="application/octet-stream"};
             }

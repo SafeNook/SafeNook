@@ -148,8 +148,8 @@ root and exactly its manifest-reachable immutable files into a fresh destination
 `.lock`, `.tmp`, previous roots and unrelated files. Verify source/copy complete hashes,
 authentication and schemas; flush destination and publish its root last. No archive parser
 or plaintext export is needed. A backup created from an uncoordinated directory copy may
-be inconsistent and is not reported verified. One-file backup packaging is future scope,
-not an invented implicit zip format. Backup verification never prints secret values.
+be inconsistent and is not reported verified. One-file backup packaging is defined by accepted [ADR 0010](adr/0010-portable-backup-container.md)
+and [SNBACKUP v1](portable-backup-format.md); it preserves the same exact inventory and authentication requirements. Backup verification never prints secret values.
 
 Restore to a new directory validates every byte before activation, creates a fresh lock,
 refuses overwrite of existing content, reports historical credentials/epoch and rollback

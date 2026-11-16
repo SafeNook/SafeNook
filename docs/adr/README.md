@@ -34,4 +34,4 @@ KDF worker и жёсткий deadline не входят в автоматиче�
 
 | # | Решение | Статус |
 |---|---|---|
-| [0010](0010-portable-backup-container.md) | Переносимый контейнер encrypted backup | Предложено; реализация ожидает согласования |
+| [0010](0010-portable-backup-container.md) | Переносимый контейнер encrypted backup | Принято (Accepted); реализация разрешена, production gate закрыт |

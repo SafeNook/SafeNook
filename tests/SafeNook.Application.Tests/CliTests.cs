@@ -9,6 +9,20 @@ namespace SafeNook.Application.Tests;
 public sealed class CliTests
 {
     [Theory]
+    [InlineData("backup")] [InlineData("restore")]
+    public void BackupWritesGateBeforeInteraction(string command)
+    {
+        using var output=new StringWriter();using var error=new StringWriter();
+        var args=command=="backup"?new[]{"backup","--vault","C:\\synthetic","--output","C:\\synthetic.snbak"}:new[]{"restore","--input","C:\\synthetic.snbak","--vault","C:\\restored"};
+        Assert.Equal(5,Program.Run(args,new VaultApplication(new NoInteraction()),output,error,TestContext.Current.CancellationToken));Assert.Equal("",output.ToString());
+    }
+    [Fact]
+    public void BackupVerifyHelpDoesNotRequireParentArguments()
+    {
+        using var output=new StringWriter();using var error=new StringWriter();
+        Assert.Equal(0,Program.Run(["backup","verify","--help"],new VaultApplication(new NoInteraction()),output,error,TestContext.Current.CancellationToken));
+    }
+    [Theory]
     [InlineData("init")] [InlineData("add")] [InlineData("rm")] [InlineData("passwd")] [InlineData("recover")] [InlineData("recovery")]
     public void ProductionWritesRefuseBeforeAnyInteraction(string command)
     {
