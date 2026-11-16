@@ -9,7 +9,7 @@ using SafeNook.Cli;
 namespace SafeNook.Application.Tests;
 
 [SupportedOSPlatform("windows")]
-public sealed class VaultApplicationTests
+public sealed partial class VaultApplicationTests
 {
     public VaultApplicationTests()=>Assert.SkipWhen(!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture!=Architecture.X64,"Windows x64 NTFS qualification only.");
     private static CancellationToken Token=>TestContext.Current.CancellationToken;
