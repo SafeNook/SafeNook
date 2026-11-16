@@ -17,12 +17,12 @@ internal sealed partial class QualificationStore
         if(!expected.SetEquals(archive.Entries.Keys)) Fail("backup-inventory");
         AllBlobs(state,manifest,token);return manifest;
     }
-    internal static string VerifyPortable(string input,CredentialKind kind,ReadOnlySpan<byte> credential,VaultAdmissionPolicy policy,CancellationToken token)
+    internal static string VerifyPortable(string input,CredentialKind kind,ReadOnlySpan<byte> credential,VaultAdmissionPolicy policy,CancellationToken token,IStoreFaults? faults=null)
     {
         using var parent=new WindowsFileSystem(Path.GetDirectoryName(input)!,false,token,archiveParent:true);
         using var metadata=policy.ReserveTransientBytes(20001L*256);
         using var stream=parent.OpenArchive(Path.GetFileName(input),false);var archive=new BackupArchive(stream,token);
-        VerifyArchive(archive,kind,credential,policy,token);return archive.Hash(token);
+        VerifyArchive(archive,kind,credential,policy,token);faults?.At(CommitStep.Authenticated);return archive.Hash(token);
     }
     internal string BackupPortable(string output,CredentialKind kind,ReadOnlySpan<byte> credential,IStoreFaults faults,CancellationToken token)
     {
@@ -33,7 +33,7 @@ internal sealed partial class QualificationStore
             {
                 using var key=OpenKey(_header,kind,credential,_policy,token);
                 using var state=Authenticate(_header,kind,credential,_files,_policy,token);
-                var manifest=Manifest(_header,key.Span,_files,_policy,token);AllBlobs(state,manifest,token);
+                var manifest=Manifest(_header,key.Span,_files,_policy,token);AllBlobs(state,manifest,token);faults.At(CommitStep.Authenticated);
                 var entries=new List<(byte Kind,string Write)> { (3,Convert.ToHexStringLower(_header.AsSpan(100,32))) };
                 entries.AddRange(manifest.Items.OrderBy(r=>r.WriteId,StringComparer.Ordinal).Select(r=>((byte)1,r.WriteId)));
                 entries.AddRange(manifest.Blobs.OrderBy(r=>r.WriteId,StringComparer.Ordinal).Select(r=>((byte)2,r.WriteId)));
@@ -54,8 +54,9 @@ internal sealed partial class QualificationStore
                 if(!_files.ReadRoot(token).AsSpan().SequenceEqual(_header)) Fail("source-changed");_files.ValidateNamespace();
                 faults.BeforeFlush(false);stream.Flush(true);faults.At(CommitStep.BeforePublish);token.ThrowIfCancellationRequested();attempted=true;
                 parent.PublishArchive(stream,Path.GetFileName(output),faults);faults.At(CommitStep.AfterPublish);
-                VerifyArchive(new BackupArchive(stream,token),kind,credential,_policy,token);return hash;
+                faults.At(CommitStep.BeforeReadback);VerifyArchive(new BackupArchive(stream,token),kind,credential,_policy,token);return hash;
             }
+            catch(Exception e) when(!attempted && IsResourceFailure(e)) { throw; }
             catch { throw new StoreException(attempted?CommitOutcome.Indeterminate:CommitOutcome.RejectedBeforePublication,"backup"); }
         }
     }
@@ -67,19 +68,20 @@ internal sealed partial class QualificationStore
             using var parent=new WindowsFileSystem(Path.GetDirectoryName(input)!,false,token,archiveParent:true);
             using var metadata=policy.ReserveTransientBytes(20001L*256);
             using var stream=parent.OpenArchive(Path.GetFileName(input),false);var archive=new BackupArchive(stream,token);
-            var manifest=VerifyArchive(archive,kind,credential,policy,token);var hash=archive.Hash(token);faults.At(CommitStep.Validated);
+            var manifest=VerifyArchive(archive,kind,credential,policy,token);var hash=archive.Hash(token);faults.At(CommitStep.Authenticated);faults.At(CommitStep.Validated);
             using var files=new WindowsFileSystem(destination,true,token);
             foreach(var entry in archive.Entries)
             { using var lease=policy.ReserveTransientBytes(entry.Value.Length);files.InstallObject(archive.Object(entry.Key,token),faults,token); }
             using(var state=Authenticate(archive.Header,kind,credential,files,policy,token)) AllBlobs(state,manifest,token);
             faults.At(CommitStep.ManifestVerified);var staged=files.StageRoot(archive.Header,faults,token);
             using(staged.Handle)
-            { files.ValidateNamespace();faults.At(CommitStep.BeforePublish);token.ThrowIfCancellationRequested();attempted=true;files.PublishRoot(staged.Handle,false);faults.At(CommitStep.AfterPublish); }
-            files.FlushRootNamespace(faults);files.ValidateNamespace();var root=files.ReadRoot(token);
+            { files.ValidateNamespace();faults.At(CommitStep.BeforePublish);token.ThrowIfCancellationRequested();attempted=true;files.PublishRoot(staged.Handle,false,faults);faults.At(CommitStep.AfterPublish); }
+            files.FlushRootNamespace(faults);files.ValidateNamespace();faults.At(CommitStep.BeforeReadback);var root=files.ReadRoot(token);
             if(!root.AsSpan().SequenceEqual(archive.Header)) Fail("root-readback");
             using(var state=Authenticate(root,kind,credential,files,policy,token)) AllBlobs(state,manifest,token);
             faults.At(CommitStep.RootReadback);return hash;
         }
+        catch(Exception e) when(!attempted && IsResourceFailure(e)) { throw; }
         catch { throw new StoreException(attempted?CommitOutcome.Indeterminate:CommitOutcome.RejectedBeforePublication,"restore"); }
     }
 }

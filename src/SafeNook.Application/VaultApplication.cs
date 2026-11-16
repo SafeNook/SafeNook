@@ -43,7 +43,7 @@ public sealed class VaultApplication
             var kind=recovery?CredentialKind.Recovery:CredentialKind.Password;
             if(operation==0)
             { using var store=QualificationStore.Open(path,kind,credential.Bytes,Policy,token);hash=store.BackupPortable(destination!,kind,credential.Bytes,_faults,token); }
-            else if(operation==1) hash=QualificationStore.VerifyPortable(path,kind,credential.Bytes,Policy,token);
+            else if(operation==1) hash=QualificationStore.VerifyPortable(path,kind,credential.Bytes,Policy,token,_faults);
             else hash=QualificationStore.RestorePortable(path,destination!,kind,credential.Bytes,Policy,_faults,token);
             return new VaultReply([]);
         },token);
@@ -86,7 +86,7 @@ public sealed class VaultApplication
         var outcome=store.Commit(candidate,kind,credential.Bytes,replacement.Bytes,rotate?Confirm:null,_faults,token).Outcome;
         if(outcome==CommitOutcome.Committed) return new VaultReply([]);
         if(outcome==CommitOutcome.Indeterminate) Fail(VaultApplicationError.Indeterminate);
-        token.ThrowIfCancellationRequested(); Fail(VaultApplicationError.Rejected); return null!;
+        token.ThrowIfCancellationRequested(); Fail(outcome==CommitOutcome.RecoveryRequired?VaultApplicationError.AuthenticationOrCorruption:VaultApplicationError.Rejected); return null!;
     },token);
 
     public VaultReply Init(string path,CancellationToken token=default)=>Run(()=>
@@ -230,6 +230,7 @@ public sealed class VaultApplication
             throw new VaultOperationException(VaultApplicationError.AuthenticationOrCorruption);
         }
         catch(VaultDataException e) { throw new VaultOperationException(e.Error==VaultDataError.ResourceLimit?VaultApplicationError.ResourceLimit:VaultApplicationError.AuthenticationOrCorruption); }
+        catch(CryptographicException) { throw new VaultOperationException(VaultApplicationError.AuthenticationOrCorruption); }
         catch(OutOfMemoryException) { throw new VaultOperationException(VaultApplicationError.ResourceLimit); }
         catch { throw new VaultOperationException(VaultApplicationError.Rejected); }
     }

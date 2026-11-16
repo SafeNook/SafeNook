@@ -250,3 +250,9 @@ Production-write gate закрыт; F-7 и готовность к реальн�
 ADR 0010 принят владельцем. Реализованы SNBACKUP v1, полная проверка всех blobs и restore
 в новый каталог; публичные backup/restore остаются заблокированы production gate.
 Результаты qualification: [SN-003D1](SN-003D1-IMPLEMENTATION.md). Power-loss qualification не завершена.
+
+## SN-003D2 — fault qualification
+
+Расширена матрица отказов credentials/backup/verify/restore, исправлена классификация
+resource failures. [Отчёт SN-003D2](SN-003D2-FAULT-QUALIFICATION.md).
+Production writes и GC закрыты; физические power-cut испытания не выполнены.

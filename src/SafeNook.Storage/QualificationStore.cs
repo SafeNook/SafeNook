@@ -51,6 +51,7 @@ internal sealed partial class QualificationStore : IDisposable
             var result=new QualificationStore(files,policy,header,state); files=null; state=null; return result;
         }
         catch(OperationCanceledException) { throw; }
+        catch(Exception e) when(IsResourceFailure(e)) { throw; }
         catch(StoreException e) { throw new StoreException(CommitOutcome.RecoveryRequired,"open-selected-root/"+e.Code); }
         catch(VaultDataException e) { throw new StoreException(CommitOutcome.RecoveryRequired,"open-selected-root/"+e.Error); }
         catch { throw new StoreException(CommitOutcome.RecoveryRequired,"open-selected-root"); }
@@ -87,7 +88,7 @@ internal sealed partial class QualificationStore : IDisposable
             using(staged.Handle)
             {
                 token.ThrowIfCancellationRequested(); faults.At(CommitStep.BeforePublish); files.ValidateNamespace(); attempted=true;
-                files.PublishRoot(staged.Handle,false); faults.At(CommitStep.AfterPublish);
+                files.PublishRoot(staged.Handle,false,faults); faults.At(CommitStep.AfterPublish);
             }
             files.FlushRootNamespace(faults); files.ValidateNamespace(); var readback=files.ReadRoot(token);
             if(!readback.AsSpan().SequenceEqual(snapshot.Header)) Fail("root-readback");
@@ -122,6 +123,7 @@ internal sealed partial class QualificationStore : IDisposable
             using var oldKey=OpenKey(current,authentication,credential,_policy,token);
             checkingCurrent=true;
             using var currentCheck=Authenticate(current,authentication,credential,_files,_policy,token);
+            faults.At(CommitStep.Authenticated);
             var oldManifest=Manifest(current,oldKey.Span,_files,_policy,token); AllBlobs(currentCheck,oldManifest,token);
             checkingCurrent=false;
             using var snapshot=new Snapshot(input,_policy); VaultFormat.ValidateHeader(snapshot.Header);
@@ -160,9 +162,9 @@ internal sealed partial class QualificationStore : IDisposable
                 if(!_files.ReadBackup(backupName,token).AsSpan().SequenceEqual(current)) Fail("backup-changed-before-publish");
                 _files.ValidateNamespace();
                 checkingCurrent=false; attempted=true;
-                _files.PublishRoot(staged.Handle,true); faults.At(CommitStep.AfterPublish);
+                _files.PublishRoot(staged.Handle,true,faults); faults.At(CommitStep.AfterPublish);
             }
-            _files.FlushRootNamespace(faults); _files.ValidateNamespace(); var readback=_files.ReadRoot(token);
+            _files.FlushRootNamespace(faults); _files.ValidateNamespace(); faults.At(CommitStep.BeforeReadback);var readback=_files.ReadRoot(token);
             if(!readback.AsSpan().SequenceEqual(next)) Fail("root-readback");
             KeySlots.VerifyHeader(readback,nextKey.Span);
             candidate.Dispose(); candidate=null;
@@ -173,6 +175,7 @@ internal sealed partial class QualificationStore : IDisposable
         }
         catch(Exception e)
         {
+            if(!attempted && IsResourceFailure(e)) throw;
             var corruptCurrent=checkingCurrent && e is not OperationCanceledException and not OutOfMemoryException &&
                 !(e is VaultDataException data && data.Error==VaultDataError.ResourceLimit);
             var outcome=attempted?CommitOutcome.Indeterminate:corruptCurrent?CommitOutcome.RecoveryRequired:CommitOutcome.RejectedBeforePublication;
@@ -262,6 +265,7 @@ internal sealed partial class QualificationStore : IDisposable
     { foreach(var blob in manifest.Blobs) { using var plaintext=state.ReadBlob(blob.Id,token); } }
     private void Invalidate() { _faulted=true; _state?.Dispose(); _state=null; }
     private void EnsureUsable() { if(_faulted || _state is null) throw new StoreException(CommitOutcome.RecoveryRequired,"reopen-required"); }
+    private static bool IsResourceFailure(Exception e)=>e is OutOfMemoryException || e is VaultDataException { Error: VaultDataError.ResourceLimit };
     private static void Fail(string code)=>throw new StoreException(CommitOutcome.RejectedBeforePublication,code);
     public void Dispose() { lock(_gate) { _state?.Dispose(); _state=null; _files.Dispose(); } }
 

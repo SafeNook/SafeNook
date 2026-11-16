@@ -85,7 +85,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
     }
     internal void PublishArchive(FileStream stream,string name,IStoreFaults faults)
     {
-        Validate(stream.SafeFileHandle,false); Rename(stream.SafeFileHandle,_directories[""],name,false);
+        Validate(stream.SafeFileHandle,false); faults.At(CommitStep.BeforeRename); Rename(stream.SafeFileHandle,_directories[""],name,false);
         FlushDirectory("",faults); Validate(stream.SafeFileHandle,false);
     }
     private SafeFileHandle OpenRelative(SafeFileHandle parent, string name, bool directory, uint disposition,
@@ -245,7 +245,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         if (_lock is null) Fail("lock-closed");
         Validate(_lock!, false); _diagnostics.NamespaceValidated=true;
     }
-    internal void PublishRoot(SafeFileHandle staged, bool replace) => Rename(staged,_directories[""],"vault.json",replace);
+    internal void PublishRoot(SafeFileHandle staged, bool replace,IStoreFaults? faults=null) { faults?.At(CommitStep.BeforeRename); Rename(staged,_directories[""],"vault.json",replace); }
     internal void FlushRootNamespace(IStoreFaults faults) { FlushDirectory(".tmp",faults); FlushDirectory("",faults); }
     private void FlushDirectory(string name,IStoreFaults faults)
     {
