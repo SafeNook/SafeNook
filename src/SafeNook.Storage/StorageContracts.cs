@@ -15,7 +15,7 @@ public static class StorageSupport
     public static bool ProductionWritesSupported => false;
     public static void RequireProductionWrites() => throw new PlatformNotSupportedException("No filesystem is qualified for production vault writes.");
 }
-internal enum CommitStep { Validated, ObjectWritten, ObjectFlushed, ObjectInstalled, ManifestVerified, BackupWritten, RootWritten, RootFlushed, BeforePublish, AfterPublish, RootReadback, Authenticated, BeforeRename, BeforeReadback }
+internal enum CommitStep { Validated, ObjectWritten, ObjectFlushed, ObjectInstalled, ManifestVerified, BackupWritten, RootWritten, RootFlushed, BeforePublish, AfterPublish, RootReadback, Authenticated, BeforeRename, BeforeReadback, ArchiveRead }
 internal interface IStoreFaults
 {
     void At(CommitStep step);

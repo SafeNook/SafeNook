@@ -9,11 +9,12 @@ internal sealed class BackupArchive : IVaultObjectSource
 {
     internal const long MaximumLength=2147483648;
     private readonly Stream _stream;
+    private readonly IStoreFaults? _faults;
     internal byte[] Header { get; }
     internal Dictionary<(byte Kind,string Write),(long Offset,int Length)> Entries { get; }=[];
-    internal BackupArchive(Stream stream,CancellationToken token)
+    internal BackupArchive(Stream stream,CancellationToken token,IStoreFaults? faults=null)
     {
-        _stream=stream;
+        _stream=stream;_faults=faults;
         if(!stream.CanSeek || stream.Length<438 || stream.Length>MaximumLength) Fail();
         stream.Position=0;var prefix=new byte[24];ReadExact(stream,prefix,token);
         if(!prefix.AsSpan(0,8).SequenceEqual("SNBACKUP"u8) || BinaryPrimitives.ReadUInt16LittleEndian(prefix.AsSpan(8))!=1 || BinaryPrimitives.ReadUInt16LittleEndian(prefix.AsSpan(10))!=0 || BinaryPrimitives.ReadUInt64LittleEndian(prefix.AsSpan(16))!=(ulong)stream.Length) Fail();
@@ -39,7 +40,7 @@ internal sealed class BackupArchive : IVaultObjectSource
     public long Read(byte kind,string writeId,Span<byte> destination,CancellationToken token)
     {
         if(!Entries.TryGetValue((kind,writeId),out var entry)) return -1;
-        _stream.Position=entry.Offset;ReadExact(_stream,destination[..Math.Min(destination.Length,entry.Length)],token);return entry.Length;
+        _stream.Position=entry.Offset;ReadExact(_stream,destination[..Math.Min(destination.Length,entry.Length)],token);_faults?.At(CommitStep.ArchiveRead);return entry.Length;
     }
     internal byte[] Object((byte Kind,string Write) id,CancellationToken token)
     { var entry=Entries[id];var bytes=new byte[entry.Length];Read(id.Kind,id.Write,bytes,token);return bytes; }
