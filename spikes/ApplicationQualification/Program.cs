@@ -15,5 +15,15 @@ if(application.List(path).Items.Length!=2 || application.Show(path,login.Id).Rev
     throw new InvalidOperationException("Qualification round trip failed.");
 application.Remove(path,login.Id);
 if(new VaultApplication(ui).List(path).Items.Length!=1 || StorageSupport.ProductionWritesSupported) throw new InvalidOperationException("Qualification invariant failed.");
+var originalRecovery=ui.Recovery;
+ui.ConfirmPassword=ui.NewPassword;
+application.ChangePassword(path);
+ui.Password=ui.NewPassword;
+application.List(path);
+application.Recover(path);
+application.RotateRecovery(path);
+if(ui.Recovery==originalRecovery) throw new InvalidOperationException("Recovery rotation failed.");
+application.Recover(path);
+application.List(path);
 if(ui.Issued.Any(bytes=>bytes.Any(value=>value!=0))) throw new InvalidOperationException("Owned input was not cleared.");
 Console.WriteLine("PASS: application init/login/note/reveal/tombstone/reopen; owned input cleared; production writes disabled.");

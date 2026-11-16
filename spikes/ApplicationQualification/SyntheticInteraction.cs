@@ -7,6 +7,7 @@ namespace SafeNook.ApplicationTestData;
 internal sealed class SyntheticInteraction:IVaultInteraction
 {
     internal string Password { get; set; }="synthetic master password";
+    internal string NewPassword { get; set; }="synthetic new password";
     internal string ConfirmPassword { get; set; }="synthetic master password";
     internal bool ConfirmKey { get; set; }=true;
     internal bool Remove { get; set; }=true;
@@ -21,7 +22,7 @@ internal sealed class SyntheticInteraction:IVaultInteraction
         token.ThrowIfCancellationRequested(); Reads++;
         var text=prompt switch
         {
-            SecretPrompt.Password=>Password, SecretPrompt.ConfirmPassword=>ConfirmPassword,
+            SecretPrompt.NewPassword=>NewPassword, SecretPrompt.Recovery=>Recovery!, SecretPrompt.Password=>Password, SecretPrompt.ConfirmPassword=>ConfirmPassword,
             SecretPrompt.ConfirmRecovery=>ConfirmKey?Recovery!:"invalid recovery",
             SecretPrompt.Title=>Title,SecretPrompt.Username=>"synthetic private username",SecretPrompt.LoginPassword=>"synthetic login password",
             SecretPrompt.Url=>"https://synthetic-private.invalid",SecretPrompt.Notes=>"synthetic login notes",SecretPrompt.Note=>Note,_=>throw new InvalidOperationException()

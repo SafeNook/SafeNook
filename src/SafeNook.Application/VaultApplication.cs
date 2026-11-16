@@ -24,6 +24,46 @@ public sealed class VaultApplication
         =>new(interaction,true,policy,faults??new NoStoreFaults());
     private VaultAdmissionPolicy Policy=>_policy??=WindowsMemory.Policy();
 
+    public VaultReply ChangePassword(string path,CancellationToken token=default)=>Credentials(path,false,false,token);
+    public VaultReply Recover(string path,CancellationToken token=default)=>Credentials(path,true,false,token);
+    public VaultReply RotateRecovery(string path,CancellationToken token=default)=>Credentials(path,false,true,token);
+    private OwnedInput RecoveryInput(SecretPrompt prompt,CancellationToken token)
+    {
+        using var input=Input(prompt,256,token); var chars=Utf8.GetChars(input.Bytes);
+        try { using var decoded=RecoveryCode.Decode(chars); return new OwnedInput(decoded.Span.ToArray()); }
+        finally { CryptographicOperations.ZeroMemory(MemoryMarshal.AsBytes(chars.AsSpan())); }
+    }
+    private VaultReply Credentials(string path,bool recover,bool rotate,CancellationToken token)=>Run(()=>
+    {
+        Guard(path,true,token);
+        if(!OperatingSystem.IsWindows()) throw new VaultOperationException(VaultApplicationError.UnsupportedPlatform);
+        using var credential=recover?RecoveryInput(SecretPrompt.Recovery,token):Input(SecretPrompt.Password,1024,token);
+        var kind=recover?CredentialKind.Recovery:CredentialKind.Password;
+        using var store=QualificationStore.Open(path,kind,credential.Bytes,Policy,token);
+        var header=store.Header; var manifest=store.ReadManifest(kind,credential.Bytes,token);
+        using var reservation=Policy.ReserveTransientBytes(checked((long)BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(186))*1024+4096));
+        using var key=recover?KeySlots.OpenRecovery(header,credential.Bytes,token):KeySlots.OpenPassword(header,credential.Bytes,Policy.KdfMemoryKiB,token);
+        using var generated=rotate?VaultCrypto.GenerateKey():null;
+        using var replacement=rotate?new OwnedInput(generated!.Span.ToArray()):Input(SecretPrompt.NewPassword,1024,token);
+        if(!rotate)
+        {
+            using var confirmation=Input(SecretPrompt.ConfirmPassword,1024,token);
+            if(!CryptographicOperations.FixedTimeEquals(replacement.Bytes,confirmation.Bytes)) Fail(VaultApplicationError.Rejected);
+        }
+        var candidate=GenerationBuilder.Credentials(header,manifest,key.Span,replacement.Bytes,rotate,Policy,token);
+        reservation.Dispose();
+        byte[] Confirm()
+        {
+            token.ThrowIfCancellationRequested();
+            _interaction.DisplayRecovery(RecoveryCode.Encode(replacement.Bytes),Convert.ToHexStringLower(header.AsSpan(12,16)));
+            using var entered=RecoveryInput(SecretPrompt.ConfirmRecovery,token); return entered.Bytes.ToArray();
+        }
+        var outcome=store.Commit(candidate,kind,credential.Bytes,replacement.Bytes,rotate?Confirm:null,_faults,token).Outcome;
+        if(outcome==CommitOutcome.Committed) return new VaultReply([]);
+        if(outcome==CommitOutcome.Indeterminate) Fail(VaultApplicationError.Indeterminate);
+        token.ThrowIfCancellationRequested(); Fail(VaultApplicationError.Rejected); return null!;
+    },token);
+
     public VaultReply Init(string path,CancellationToken token=default)=>Run(()=>
     {
         Guard(path,true,token);

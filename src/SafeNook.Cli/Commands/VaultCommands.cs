@@ -9,9 +9,10 @@ internal static class VaultCommands
 {
     internal static void AddTo(RootCommand root,VaultApplication application,TextWriter output,TextWriter error,CancellationToken token)
     {
-        foreach(var name in new[]{"init","ls","show","add","rm"})
+        foreach(var name in new[]{"init","ls","show","add","rm","passwd","recover","rotate"})
         {
             var description=name switch { "init"=>"Create a vault (production writes currently disabled).", "ls"=>"List authenticated safe metadata.",
+                "passwd"=>"Change the master password (production writes disabled).", "recover"=>"Recover access using the recovery key (production writes disabled).", "rotate"=>"Replace the recovery key (production writes disabled).",
                 "show"=>"Show safe metadata; --reveal explicitly requests login/note secrets.","add"=>"Add a login or note (production writes currently disabled).",_=>"Confirm a tombstone (production writes currently disabled)." };
             var command=new Command(name,description+" Experimental; not qualified for real secrets.");
             var vault=new Option<string>("--vault") {Description="Required absolute path to exactly one vault.",Required=true}; command.Options.Add(vault);
@@ -28,6 +29,7 @@ internal static class VaultCommands
                     var path=parsed.GetValue(vault)!;
                     var reply=name switch
                     {
+                        "passwd"=>application.ChangePassword(path,token), "recover"=>application.Recover(path,token), "rotate"=>application.RotateRecovery(path,token),
                         "init"=>application.Init(path,token), "ls"=>application.List(path,token),
                         "show"=>application.Show(path,parsed.GetValue(id)!,parsed.GetValue(reveal),token),
                         "add"=>application.Add(path,parsed.GetValue(type)!,token),
@@ -46,7 +48,7 @@ internal static class VaultCommands
                         foreach(var url in secret.Urls) text.Append("url: ").Append(Escape(url)).Append('\n');
                         if(secret.Note is not null) text.Append("note: ").Append(Escape(secret.Note)).Append('\n');
                     }
-                    if(name is "init" or "rm") text.Append("ok\n");
+                    if(name is "init" or "rm" or "passwd" or "recover" or "rotate") text.Append("ok\n");
                     if(name is "ls" or "show") token.ThrowIfCancellationRequested();
                     output.Write(text.ToString()); return 0;
                 }
@@ -54,7 +56,7 @@ internal static class VaultCommands
                 catch(OperationCanceledException) { error.WriteLine("Operation cancelled."); return 130; }
                 catch { error.WriteLine("Vault operation failed."); return 1; }
             });
-            root.Subcommands.Add(command);
+            if(name=="rotate") { var recovery=new Command("recovery","Manage recovery credentials."); recovery.Subcommands.Add(command); root.Subcommands.Add(recovery); } else root.Subcommands.Add(command);
         }
     }
     internal static string Escape(string value)

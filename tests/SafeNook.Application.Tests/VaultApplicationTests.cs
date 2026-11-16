@@ -19,6 +19,49 @@ public sealed class VaultApplicationTests
         var dir=new DirectoryInfo(AppContext.BaseDirectory);while(dir is not null && !File.Exists(Path.Combine(dir.FullName,"SafeNook.slnx"))) dir=dir.Parent;
         var parent=Path.Combine(dir!.FullName,"artifacts");Directory.CreateDirectory(parent);return Path.Combine(parent,"sn-003c1-"+Guid.NewGuid().ToString("N"));
     }
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void CredentialCommitFaultRequiresExplicitReopen(bool published)
+    {
+        var path=PathForTest();var ui=new SyntheticInteraction();App(ui).Init(path,Token);
+        var original=File.ReadAllBytes(Path.Combine(path,"vault.json"));
+        ui.ConfirmPassword=ui.NewPassword;
+        var error=Assert.Throws<VaultOperationException>(()=>App(ui,new Fault(published?CommitStep.AfterPublish:CommitStep.BeforePublish)).ChangePassword(path,Token));
+        Assert.Equal(published?VaultApplicationError.Indeterminate:VaultApplicationError.Rejected,error.Error);
+        if(!published) Assert.Equal(original,File.ReadAllBytes(Path.Combine(path,"vault.json")));
+        else ui.Password=ui.NewPassword;
+        App(ui).List(path,Token);App(ui).Recover(path,Token);
+    }
+    [Fact]
+    public void CredentialLifecyclePreservesSlotsAndRejectsOldCredentials()
+    {
+        var path=PathForTest();var ui=new SyntheticInteraction();var app=App(ui);app.Init(path,Token);
+        byte[] Header()=>VaultFormat.DecodeWrapper(File.ReadAllBytes(Path.Combine(path,"vault.json")));
+        var original=Header(); var oldPassword=ui.Password; var oldRecovery=ui.Recovery!;
+        using(var cancelled=new CancellationTokenSource())
+        {
+            cancelled.Cancel();Assert.Throws<VaultOperationException>(()=>app.ChangePassword(path,cancelled.Token));Assert.Equal(original,Header());
+        }
+        ui.DisplayRecovery("invalid recovery","");Assert.Throws<VaultOperationException>(()=>app.Recover(path,Token));Assert.Equal(original,Header());ui.DisplayRecovery(oldRecovery,"");
+
+        ui.ConfirmPassword="mismatch";
+        Assert.Throws<VaultOperationException>(()=>app.ChangePassword(path,Token));Assert.Equal(original,Header());
+        ui.ConfirmPassword=ui.NewPassword; app.ChangePassword(path,Token);
+        Assert.Equal(original.AsSpan(274,108).ToArray(),Header().AsSpan(274,108).ToArray());
+        Assert.Throws<VaultOperationException>(()=>app.List(path,Token));
+        app.Recover(path,Token);ui.Password=ui.NewPassword;app.List(path,Token);
+        var before=Header();ui.ConfirmKey=false;
+        Assert.Throws<VaultOperationException>(()=>app.RotateRecovery(path,Token));Assert.Equal(before,Header());
+        ui.ConfirmKey=true;app.RotateRecovery(path,Token);
+        Assert.Equal(before.AsSpan(166,108).ToArray(),Header().AsSpan(166,108).ToArray());
+        using var oldKey=RecoveryCode.Decode(oldRecovery.AsSpan());
+        Assert.ThrowsAny<Exception>(()=>{using var invalid=KeySlots.OpenRecovery(Header(),oldKey.Span,Token);});
+        using var originalKey=KeySlots.OpenRecovery(original,oldKey.Span,Token);
+        using var newKey=KeySlots.OpenPassword(Header(),System.Text.Encoding.UTF8.GetBytes(ui.Password),65536,Token);
+        Assert.Equal(originalKey.Span.ToArray(),newKey.Span.ToArray());
+        app.Recover(path,Token);app.List(path,Token);
+        Assert.All(ui.Issued,b=>Assert.All(b,value=>Assert.Equal((byte)0,value)));
+    }
     [Fact]
     public void LoginNoteTombstoneReopenRevealAndSlotPreservation()
     {
