@@ -27,11 +27,14 @@ internal sealed class QualificationStore : IDisposable
     internal AdmittedPlaintext ReadBlob(string id,CancellationToken token) { lock(_gate) { EnsureUsable(); return _state!.ReadBlob(id,token); } }
 
     internal ManifestDto ReadManifest(ReadOnlySpan<byte> password, CancellationToken token)
+        => ReadManifest(CredentialKind.Password,password,token);
+
+    internal ManifestDto ReadManifest(CredentialKind kind,ReadOnlySpan<byte> password,CancellationToken token)
     {
         lock(_gate)
         {
             EnsureUsable();
-            using var key=OpenKey(_header,CredentialKind.Password,password,_policy,token);
+            using var key=OpenKey(_header,kind,password,_policy,token);
             return Manifest(_header,key.Span,_files,_policy,token);
         }
     }

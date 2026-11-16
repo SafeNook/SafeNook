@@ -1,7 +1,7 @@
 namespace SafeNook.Application;
 
 /// <summary>Fixed prompts; credential data never appears in a prompt identifier.</summary>
-public enum SecretPrompt { Password, ConfirmPassword, ConfirmRecovery, Title, Username, LoginPassword, Url, Notes, Note }
+public enum SecretPrompt { Password, NewPassword, Recovery, ConfirmPassword, ConfirmRecovery, Title, Username, LoginPassword, Url, Notes, Note }
 /// <summary>Only an explicit interactive channel is supported in C1. Returned byte arrays transfer ownership and are wiped by the application.</summary>
 public interface IVaultInteraction
 {

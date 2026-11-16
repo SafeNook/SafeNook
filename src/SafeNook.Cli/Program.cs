@@ -9,7 +9,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         var application=new VaultApplication(new ConsoleVaultInteraction(new ConsoleSecretTerminal()));
-        if(args.FirstOrDefault() is not ("init" or "ls" or "show" or "add" or "rm"))
+        if(args.FirstOrDefault() is not ("init" or "ls" or "show" or "add" or "rm" or "passwd" or "recover" or "recovery"))
             return Run(args,application,Console.Out,Console.Error);
         using var cancellation=new CancellationTokenSource();
         ConsoleCancelEventHandler cancel=(_,e)=>{e.Cancel=true;cancellation.Cancel();};

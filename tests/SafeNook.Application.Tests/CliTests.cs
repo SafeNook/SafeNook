@@ -9,10 +9,11 @@ namespace SafeNook.Application.Tests;
 public sealed class CliTests
 {
     [Theory]
-    [InlineData("init")] [InlineData("add")] [InlineData("rm")]
+    [InlineData("init")] [InlineData("add")] [InlineData("rm")] [InlineData("passwd")] [InlineData("recover")] [InlineData("recovery")]
     public void ProductionWritesRefuseBeforeAnyInteraction(string command)
     {
         var args=new List<string>{command,"--vault",Path.GetFullPath("nonexistent-test-vault")};
+        if(command=="recovery") args.Insert(1,"rotate");
         if(command=="add") args.AddRange(["--type","login"]);
         if(command=="rm") args.Add(new string('a',32));
         using var output=new StringWriter();using var error=new StringWriter();

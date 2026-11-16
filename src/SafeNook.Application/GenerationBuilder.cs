@@ -30,6 +30,13 @@ internal static class GenerationBuilder
         var manifestFile=EncryptManifest(manifest,key,token);
         return new(KeySlots.AdvanceHeader(oldHeader,Prefix(manifest,manifestFile),key),[encrypted,manifestFile]);
     }
+    internal static EncryptedGeneration Credentials(byte[] header,ManifestDto old,ReadOnlySpan<byte> key,ReadOnlySpan<byte> replacement,bool recovery,VaultAdmissionPolicy policy,CancellationToken token)
+    {
+        var manifest=new ManifestDto {Schema=1,VaultId=old.VaultId,EpochId=old.EpochId,GenerationId=VaultFormat.NewId().ToString("N"),Sequence=checked(old.Sequence+1),ParentHeaderHash=Convert.ToHexStringLower(SHA256.HashData(header)),Items=old.Items,Blobs=old.Blobs};
+        var file=EncryptManifest(manifest,key,token); var prefix=Prefix(manifest,file);
+        var next=recovery?KeySlots.ReplaceRecovery(header,prefix,key,replacement,token):KeySlots.ReplacePassword(header,prefix,key,replacement,System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(186)),System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(190)),policy.KdfMemoryKiB,token);
+        return new(next,[file]);
+    }
     private static byte[] EncryptManifest(ManifestDto manifest,ReadOnlySpan<byte> key,CancellationToken token)
     {
         var json=VaultPayloadJson.WriteManifest(manifest);
