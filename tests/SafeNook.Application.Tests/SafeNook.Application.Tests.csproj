@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup><PackageReference Include="xunit.v3" /><Using Include="Xunit" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../src/SafeNook.Cli/SafeNook.Cli.csproj" /></ItemGroup>
+  <ItemGroup><Compile Include="../../spikes/ApplicationQualification/SyntheticInteraction.cs" Link="SyntheticInteraction.cs" /></ItemGroup>
+</Project>

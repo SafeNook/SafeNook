@@ -9,13 +9,16 @@
   <Folder Name="/src/">
     <Project Path="src/SafeNook.Core/SafeNook.Core.csproj" />
     <Project Path="src/SafeNook.Storage/SafeNook.Storage.csproj" />
+    <Project Path="src/SafeNook.Application/SafeNook.Application.csproj" />
     <Project Path="src/SafeNook.Cli/SafeNook.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SafeNook.Core.Tests/SafeNook.Core.Tests.csproj" />
     <Project Path="tests/SafeNook.Storage.Tests/SafeNook.Storage.Tests.csproj" />
+    <Project Path="tests/SafeNook.Application.Tests/SafeNook.Application.Tests.csproj" />
   </Folder>
   <Folder Name="/spikes/">
     <Project Path="spikes/StoreQualification/StoreQualification.csproj" />
+    <Project Path="spikes/ApplicationQualification/ApplicationQualification.csproj" />
   </Folder>
 </Solution>

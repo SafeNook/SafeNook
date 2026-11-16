@@ -86,6 +86,20 @@ public sealed class VaultTests
     }
 
     [Fact]
+    public void AdvanceHeaderPreservesSlotsAndRejectsBrokenLineage()
+    {
+        var old=Hex(Vectors.Header);var key=Hex(Vectors.VaultKey);
+        var prefix=VaultFormat.EncodePrefix(VaultFormat.ReadId(old.AsSpan(12,16)),VaultFormat.ReadId(old.AsSpan(28,16)),
+            VaultFormat.NewId(),BinaryPrimitives.ReadUInt64LittleEndian(old.AsSpan(60))+1,SHA256.HashData(old),RandomNumberGenerator.GetBytes(32),RandomNumberGenerator.GetBytes(32));
+        var next=KeySlots.AdvanceHeader(old,prefix,key);KeySlots.VerifyHeader(next,key);
+        Assert.Equal(old.AsSpan(166,216).ToArray(),next.AsSpan(166,216).ToArray());
+        Assert.Equal(old,Hex(Vectors.Header));
+        var broken=prefix.ToArray();broken[68]^=1;Assert.Throws<FormatException>(()=>KeySlots.AdvanceHeader(old,broken,key));
+        var damaged=old.ToArray();damaged[^1]^=1;Assert.Throws<CryptographicException>(()=>KeySlots.AdvanceHeader(damaged,prefix,key));
+        Assert.Throws<FormatException>(()=>KeySlots.AdvanceHeader(old,old.AsSpan(0,166),key));
+    }
+
+    [Fact]
     public void EveryHeaderByteIsCoveredByValidationOrMac()
     {
         var original = Hex(Vectors.Header);

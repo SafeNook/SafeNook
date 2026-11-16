@@ -236,3 +236,11 @@ F-7 целиком не отмечается завершённой; польз�
 проверки root/namespace перед публикацией. ABI сверена с Windows SDK; добавлены регрессии.
 Production writes и GC остаются выключенными; F-7 не завершена. Независимый внешний review,
 реальные quota/ENOSPC и power-cut испытания остаются открытыми; подготовлены план стенда и checklist.
+
+## 14. SN-003C1: Vault CLI и application layer
+
+[Реализация и проверки](SN-003C1-IMPLEMENTATION.md): отдельный Application, команды init/ls/show/add/rm,
+строгий выбор vault, no-echo credentials и явный reveal. Полные записи проверяются только
+в synthetic qualification harness; публичные init/add/rm отказывают до ввода секретов.
+Production-write gate закрыт; F-7 и готовность к реальным секретам не объявляются завершёнными.
+Защищённые noninteractive каналы, дополнительные платформы и SN-003C2 остаются отдельным этапом.

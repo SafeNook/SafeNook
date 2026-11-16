@@ -26,6 +26,16 @@ internal sealed class QualificationStore : IDisposable
     internal ItemDocument ReadItem(string id) { lock(_gate) { EnsureUsable(); return _state!.ReadItem(id); } }
     internal AdmittedPlaintext ReadBlob(string id,CancellationToken token) { lock(_gate) { EnsureUsable(); return _state!.ReadBlob(id,token); } }
 
+    internal ManifestDto ReadManifest(ReadOnlySpan<byte> password, CancellationToken token)
+    {
+        lock(_gate)
+        {
+            EnsureUsable();
+            using var key=OpenKey(_header,CredentialKind.Password,password,_policy,token);
+            return Manifest(_header,key.Span,_files,_policy,token);
+        }
+    }
+
     internal static QualificationStore Open(string path,CredentialKind kind,ReadOnlySpan<byte> credential,VaultAdmissionPolicy policy,CancellationToken token)
     {
         WindowsFileSystem? files=null; AuthenticatedVaultState? state=null;
