@@ -29,3 +29,9 @@
 Приняты ADR 0001–0009. ADR 0008 частично заменяет layout ADR 0004. Выбор whole-object
 вместо attachment STREAM из ADR 0003 подтверждён владельцем; редакция ADR 0009 принята.
 KDF worker и жёсткий deadline не входят в автоматически утверждённые решения.
+
+## SN-003D1 — предложение
+
+| # | Решение | Статус |
+|---|---|---|
+| [0010](0010-portable-backup-container.md) | Переносимый контейнер encrypted backup | Принято (Accepted); реализация разрешена, production gate закрыт |

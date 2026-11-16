@@ -9,6 +9,28 @@ internal static class VaultCommands
 {
     internal static void AddTo(RootCommand root,VaultApplication application,TextWriter output,TextWriter error,CancellationToken token)
     {
+        var backup=new Command("backup","Create an encrypted backup (writes disabled).");
+        var verify=new Command("verify","Fully authenticate a backup, including all blobs.");
+        var restore=new Command("restore","Restore into a new vault (writes disabled).");
+        backup.Subcommands.Add(verify);root.Subcommands.Add(backup);root.Subcommands.Add(restore);
+        foreach(var pair in new[]{(backup,0),(verify,1),(restore,2)})
+        {
+            var input=new Option<string>(pair.Item2==0?"--vault":"--input") {Required=true};
+            var target=new Option<string>(pair.Item2==0?"--output":"--vault") {Required=true};
+            var credential=new Option<string>("--credential") {DefaultValueFactory=_=>"password",Description="password or recovery; never the credential value."};
+            pair.Item1.Options.Add(input);if(pair.Item2!=1) pair.Item1.Options.Add(target);pair.Item1.Options.Add(credential);
+            pair.Item1.SetAction(parsed=>
+            {
+                try
+                {
+                    var selected=parsed.GetValue(credential);if(selected is not ("password" or "recovery")) throw new VaultOperationException(VaultApplicationError.InvalidArguments);
+                    var hash=pair.Item2 switch {0=>application.Backup(parsed.GetValue(input)!,parsed.GetValue(target)!,selected=="recovery",token),1=>application.VerifyBackup(parsed.GetValue(input)!,selected=="recovery",token),_=>application.Restore(parsed.GetValue(input)!,parsed.GetValue(target)!,selected=="recovery",token)};
+                    output.WriteLine("Verified SHA-256: "+hash);return 0;
+                }
+                catch(VaultOperationException e) {var (code,message)=Failure(e.Error);error.WriteLine(message);return code;}
+                catch {error.WriteLine("Backup operation failed.");return 1;}
+            });
+        }
         foreach(var name in new[]{"init","ls","show","add","rm","passwd","recover","rotate"})
         {
             var description=name switch { "init"=>"Create a vault (production writes currently disabled).", "ls"=>"List authenticated safe metadata.",

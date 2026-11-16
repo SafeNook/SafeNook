@@ -11,7 +11,7 @@ internal readonly record struct QualificationCommit(CommitOutcome Outcome, bool 
 
 /// <summary>Internal process-crash qualification API, not a production writable API. Holds the OS lock for its lifetime.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed class QualificationStore : IDisposable
+internal sealed partial class QualificationStore : IDisposable
 {
     private readonly object _gate = new();
     private readonly WindowsFileSystem _files;

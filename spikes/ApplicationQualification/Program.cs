@@ -25,5 +25,8 @@ application.RotateRecovery(path);
 if(ui.Recovery==originalRecovery) throw new InvalidOperationException("Recovery rotation failed.");
 application.Recover(path);
 application.List(path);
+var archive=path+".snbak";var restored=path+"-restored";
+var backupHash=application.Backup(path,archive);
+if(application.VerifyBackup(archive)!=backupHash || application.Restore(archive,restored)!=backupHash || application.List(restored).Items.Length!=1) throw new InvalidOperationException("Backup round trip failed.");
 if(ui.Issued.Any(bytes=>bytes.Any(value=>value!=0))) throw new InvalidOperationException("Owned input was not cleared.");
 Console.WriteLine("PASS: application init/login/note/reveal/tombstone/reopen; owned input cleared; production writes disabled.");

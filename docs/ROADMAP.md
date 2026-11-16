@@ -244,3 +244,9 @@ Production writes и GC остаются выключенными; F-7 не за
 в synthetic qualification harness; публичные init/add/rm отказывают до ввода секретов.
 Production-write gate закрыт; F-7 и готовность к реальным секретам не объявляются завершёнными.
 Защищённые noninteractive каналы, дополнительные платформы и SN-003C2 остаются отдельным этапом.
+
+## SN-003D1 — переносимый encrypted backup
+
+ADR 0010 принят владельцем. Реализованы SNBACKUP v1, полная проверка всех blobs и restore
+в новый каталог; публичные backup/restore остаются заблокированы production gate.
+Результаты qualification: [SN-003D1](SN-003D1-IMPLEMENTATION.md). Power-loss qualification не завершена.

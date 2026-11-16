@@ -10,7 +10,7 @@ using SafeNook.StoreTestData;
 namespace SafeNook.Storage.Tests;
 
 [SupportedOSPlatform("windows")]
-public sealed class StoreTests
+public sealed partial class StoreTests
 {
     public StoreTests() => Assert.SkipWhen(!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64, "Windows x64 NTFS qualification only.");
     private static CancellationToken Token=>TestContext.Current.CancellationToken;

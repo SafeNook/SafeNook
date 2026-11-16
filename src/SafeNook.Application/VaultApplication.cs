@@ -24,6 +24,31 @@ public sealed class VaultApplication
         =>new(interaction,true,policy,faults??new NoStoreFaults());
     private VaultAdmissionPolicy Policy=>_policy??=WindowsMemory.Policy();
 
+    public string Backup(string path,string output,bool recovery=false,CancellationToken token=default)
+        =>ArchiveOperation(path,output,0,recovery,token);
+    public string VerifyBackup(string input,bool recovery=false,CancellationToken token=default)
+        =>ArchiveOperation(input,null,1,recovery,token);
+    public string Restore(string input,string destination,bool recovery=false,CancellationToken token=default)
+        =>ArchiveOperation(input,destination,2,recovery,token);
+    private string ArchiveOperation(string path,string? destination,int operation,bool recovery,CancellationToken token)
+    {
+        string hash="";
+        Run(()=>
+        {
+            Guard(path,operation!=1,token);
+            if(!OperatingSystem.IsWindows()) throw new VaultOperationException(VaultApplicationError.UnsupportedPlatform);
+            if(destination is not null && !Path.IsPathFullyQualified(destination)) Fail(VaultApplicationError.InvalidArguments);
+            if(operation==0 && (Path.GetFullPath(destination!).StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase) || string.Equals(Path.GetFullPath(destination!),Path.GetFullPath(path),StringComparison.OrdinalIgnoreCase))) Fail(VaultApplicationError.InvalidArguments);
+            using var credential=recovery?RecoveryInput(SecretPrompt.Recovery,token):Input(SecretPrompt.Password,1024,token);
+            var kind=recovery?CredentialKind.Recovery:CredentialKind.Password;
+            if(operation==0)
+            { using var store=QualificationStore.Open(path,kind,credential.Bytes,Policy,token);hash=store.BackupPortable(destination!,kind,credential.Bytes,_faults,token); }
+            else if(operation==1) hash=QualificationStore.VerifyPortable(path,kind,credential.Bytes,Policy,token);
+            else hash=QualificationStore.RestorePortable(path,destination!,kind,credential.Bytes,Policy,_faults,token);
+            return new VaultReply([]);
+        },token);
+        return hash;
+    }
     public VaultReply ChangePassword(string path,CancellationToken token=default)=>Credentials(path,false,false,token);
     public VaultReply Recover(string path,CancellationToken token=default)=>Credentials(path,true,false,token);
     public VaultReply RotateRecovery(string path,CancellationToken token=default)=>Credentials(path,false,true,token);

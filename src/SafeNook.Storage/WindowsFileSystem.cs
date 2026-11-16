@@ -21,7 +21,7 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
 
     private static string CurrentOwner() { using var identity=WindowsIdentity.GetCurrent(); return identity.User!.Value; }
 
-    internal WindowsFileSystem(string path, bool create, CancellationToken token, StorageDiagnostics? diagnostics = null)
+    internal WindowsFileSystem(string path, bool create, CancellationToken token, StorageDiagnostics? diagnostics = null, bool archiveParent = false)
     {
         _diagnostics=diagnostics??new StorageDiagnostics();
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64) throw new PlatformNotSupportedException("Only Windows x64 has a qualification adapter.");
@@ -51,10 +51,11 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
             {
                 var last = i == names.Length - 1;
                 _diagnostics.Stage=last?StorageStage.VaultDirectory:StorageStage.Ancestor;
-                var next = OpenRelative(parent, names[i], true, last && create ? 2u : 1u, last, false, 3, last);
+                var next = OpenRelative(parent, names[i], true, last && create ? 2u : 1u, last, false, 3, last && !archiveParent);
                 _pinned.Add(next); parent = next;
             }
             _directories.Add("", parent);
+            if(archiveParent) return;
             foreach (var name in new[] { "items", "blobs", "manifests", ".backup", ".tmp" })
             {
                 _diagnostics.Stage=StorageStage.ChildDirectory;
@@ -76,6 +77,17 @@ internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
         catch(Exception e) { _diagnostics.Capture(e); Dispose(); throw; }
     }
 
+    internal FileStream OpenArchive(string name,bool create)
+    {
+        var handle=OpenRelative(_directories[""],name,false,create?2u:1u,create,create,1);
+        try { return new FileStream(handle,create?FileAccess.ReadWrite:FileAccess.Read,65536,false); }
+        catch { handle.Dispose(); throw; }
+    }
+    internal void PublishArchive(FileStream stream,string name,IStoreFaults faults)
+    {
+        Validate(stream.SafeFileHandle,false); Rename(stream.SafeFileHandle,_directories[""],name,false);
+        FlushDirectory("",faults); Validate(stream.SafeFileHandle,false);
+    }
     private SafeFileHandle OpenRelative(SafeFileHandle parent, string name, bool directory, uint disposition,
         bool writable = false, bool rename = false, uint share = 1, bool securityCheck = true)
     {
