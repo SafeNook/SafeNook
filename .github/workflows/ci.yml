@@ -62,6 +62,7 @@ jobs:
         run: |
           $exe = if ($IsWindows) { 'nook.exe' } else { 'nook' }
           ./tests/Test-Cli.ps1 -Executable "./src/SafeNook.Cli/bin/Release/net10.0/$exe"
+          ./tests/Test-VaultCli.ps1 -Executable "./src/SafeNook.Cli/bin/Release/net10.0/$exe"
 
       - name: Publish native AOT
         run: dotnet publish src/SafeNook.Cli --configuration Release --runtime ${{ matrix.rid }} --output publish
@@ -71,6 +72,7 @@ jobs:
         run: |
           $exe = if ($IsWindows) { 'nook.exe' } else { 'nook' }
           ./tests/Test-Cli.ps1 -Executable "./publish/$exe"
+          ./tests/Test-VaultCli.ps1 -Executable "./publish/$exe"
 
       - name: Upload binary
         uses: actions/upload-artifact@v7

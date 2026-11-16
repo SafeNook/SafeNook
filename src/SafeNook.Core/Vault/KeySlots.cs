@@ -59,6 +59,19 @@ public static class KeySlots
         finally { CryptographicOperations.ZeroMemory(mac); }
     }
 
+    /// <summary>Signs a same-epoch next-generation header while preserving both credential slots exactly.</summary>
+    public static byte[] AdvanceHeader(ReadOnlySpan<byte> oldHeader, ReadOnlySpan<byte> nextPrefix, ReadOnlySpan<byte> vaultKey)
+    {
+        VerifyHeader(oldHeader, vaultKey); VaultFormat.ValidatePrefix(nextPrefix);
+        VaultFormat.Require(nextPrefix.Slice(12,32).SequenceEqual(oldHeader.Slice(12,32)) &&
+            VaultFormat.U64(oldHeader,60)!=ulong.MaxValue && VaultFormat.U64(nextPrefix,60)==VaultFormat.U64(oldHeader,60)+1 &&
+            !nextPrefix.Slice(44,16).SequenceEqual(oldHeader.Slice(44,16)) &&
+            !nextPrefix.Slice(100,32).SequenceEqual(oldHeader.Slice(100,32)) &&
+            nextPrefix.Slice(68,32).SequenceEqual(SHA256.HashData(oldHeader)));
+        var result=oldHeader.ToArray(); nextPrefix.CopyTo(result); Sign(result,vaultKey);
+        VaultFormat.ValidateHeader(result); VerifyHeader(result,vaultKey); return result;
+    }
+
     private static byte[] Replace(ReadOnlySpan<byte> oldHeader, ReadOnlySpan<byte> prefix, ReadOnlySpan<byte> key,
         ReadOnlySpan<byte> credential, byte kind, uint memory, uint iterations, uint budget, CancellationToken cancellationToken)
     {
