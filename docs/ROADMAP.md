@@ -271,3 +271,10 @@ Production writes и GC закрыты; физические power-cut испы�
 
 [Архитектура SN-003Q1](SN-003Q1-LAB-ARCHITECTURE.md): рекомендуется новая независимая VM;
 VM и диски не созданы, power-cut и quota/full-volume не выполнялись. Production writes и GC закрыты.
+
+## SN-003Q2 — внешний durability oracle
+
+Архитектура Q1 утверждена владельцем в задании Q2. Добавлены отдельные host/guest-компоненты,
+бинарный протокол, flush-before-ACK, mutable recovery oracle и read-only планы новой VM.
+[Отчёт SN-003Q2](SN-003Q2-ORACLE-IMPLEMENTATION.md). Реальная UART-интеграция и развёртывание
+остаются отдельным этапом; VM/диски не создавались, production writes и GC закрыты.

@@ -18,6 +18,7 @@
     <Project Path="tests/SafeNook.Application.Tests/SafeNook.Application.Tests.csproj" />
   </Folder>
   <Folder Name="/spikes/">
+    <Project Path="spikes/DurabilityOracle/DurabilityOracle.csproj" />
     <Project Path="spikes/StoreQualification/StoreQualification.csproj" />
     <Project Path="spikes/ApplicationQualification/ApplicationQualification.csproj" />
   </Folder>
