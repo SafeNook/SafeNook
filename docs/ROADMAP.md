@@ -262,3 +262,32 @@ Production writes и GC закрыты; физические power-cut испы�
 Добавлена отдельная process-kill матрица credentials/backup/restore и post-ACK проверка.
 Подготовлены guarded-сценарии VirtualBox/NTFS без создания VM или изменения quota.
 [Отчёт SN-003D3](SN-003D3-CRASH-QUALIFICATION.md). Production writes и GC закрыты.
+
+## SN-003Q1 — изолированная Windows storage lab
+
+- [x] Подготовить сравнение конфигураций, бюджет, внешний oracle и план испытаний.
+- [ ] Согласовать архитектуру, лицензированную offline-установку и выделенные пути с владельцем.
+- [ ] Отдельно разрешить развёртывание и разрушительные испытания.
+
+[Архитектура SN-003Q1](SN-003Q1-LAB-ARCHITECTURE.md): рекомендуется новая независимая VM;
+VM и диски не созданы, power-cut и quota/full-volume не выполнялись. Production writes и GC закрыты.
+
+## SN-003Q2 — внешний durability oracle
+
+Архитектура Q1 утверждена владельцем в задании Q2. Добавлены отдельные host/guest-компоненты,
+бинарный протокол, flush-before-ACK, mutable recovery oracle и read-only планы новой VM.
+[Отчёт SN-003Q2](SN-003Q2-ORACLE-IMPLEMENTATION.md). Реальная UART-интеграция и развёртывание
+остаются отдельным этапом; VM/диски не создавались, production writes и GC закрыты.
+
+## SN-003Q3 — oracle реальных vault-операций
+
+Подключён internal qualification harness к реальным passwd/recover/rotation/backup/verify/restore.
+ACK требует повторной полной аутентификации guest и независимой проверки host, включая blobs.
+[Отчёт SN-003Q3](SN-003Q3-ORACLE-INTEGRATION.md). VM и physical power-loss не проверены;
+production writes и GC закрыты.
+
+## SN-CI-002 — платформенная классификация oracle-тестов
+
+Windows process/pipe qualification использует явный xUnit skip на других ОС; переносимые
+проверки протокола продолжают выполняться. [Отчёт SN-CI-002](SN-CI-002-ORACLE-PLATFORMS.md).
+Зелёный GitHub Actions после публикации изменений ещё требуется подтвердить.

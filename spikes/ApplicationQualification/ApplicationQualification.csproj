@@ -6,4 +6,5 @@
     <ItemGroup><NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" /><RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(Filename)' == 'libsodium'" /></ItemGroup>
   </Target>
   <ItemGroup><Compile Include="../StoreQualification/GenerationFixture.cs" Link="GenerationFixture.cs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../DurabilityOracle/DurabilityOracle.csproj" /></ItemGroup>
 </Project>
