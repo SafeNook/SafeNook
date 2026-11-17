@@ -278,3 +278,10 @@ VM и диски не созданы, power-cut и quota/full-volume не вып
 бинарный протокол, flush-before-ACK, mutable recovery oracle и read-only планы новой VM.
 [Отчёт SN-003Q2](SN-003Q2-ORACLE-IMPLEMENTATION.md). Реальная UART-интеграция и развёртывание
 остаются отдельным этапом; VM/диски не создавались, production writes и GC закрыты.
+
+## SN-003Q3 — oracle реальных vault-операций
+
+Подключён internal qualification harness к реальным passwd/recover/rotation/backup/verify/restore.
+ACK требует повторной полной аутентификации guest и независимой проверки host, включая blobs.
+[Отчёт SN-003Q3](SN-003Q3-ORACLE-INTEGRATION.md). VM и physical power-loss не проверены;
+production writes и GC закрыты.
