@@ -20,6 +20,44 @@ public sealed class OracleIntegrationTests
                 foreach(var scenario in new[]{"confirmation","corrupt-after"}) yield return [op,scenario];
         }
     }
+    [Theory]
+    [InlineData("pre",false)] [InlineData("post",false)] [InlineData("ack",false)] [InlineData("ack",true)]
+    public async Task VmSmokePauseAndRebootVerifier(string phase,bool corruptEvidence)
+    {
+        var root=new DirectoryInfo(AppContext.BaseDirectory);while(root is not null && !File.Exists(Path.Combine(root.FullName,"SafeNook.slnx"))) root=root.Parent;
+        var executable=Path.Combine(root!.FullName,"spikes","ApplicationQualification","bin","Release","net10.0","ApplicationQualification.exe");
+        var path=Path.Combine(root.FullName,"artifacts","sn-003q4-"+Guid.NewGuid().ToString("N"),"vault");
+        Process Launch(params string[] arguments)
+        {
+            var info=new ProcessStartInfo(executable){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+            foreach(var argument in arguments) info.ArgumentList.Add(argument);return Process.Start(info)!;
+        }
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        using var controller=Launch(path,"oracle","Password","vm-"+phase);
+        string? baseline;
+        try
+        {
+            baseline=await controller.StandardOutput.ReadLineAsync(deadline.Token);Assert.StartsWith("BASELINE-SHA256 ",baseline);
+            Assert.StartsWith("VM-READY "+phase+" ",await controller.StandardOutput.ReadLineAsync(deadline.Token));
+            Assert.False(controller.HasExited);controller.Kill(true);await controller.WaitForExitAsync(deadline.Token);
+            Assert.Equal("",await controller.StandardError.ReadToEndAsync(deadline.Token));
+        }
+        finally {if(!controller.HasExited) {controller.Kill(true);controller.WaitForExit();}}
+        if(corruptEvidence)
+        {
+            var evidence=Path.Combine(path+".oracle","raw-sha256.bin");var bytes=File.ReadAllBytes(evidence);bytes[0]^=1;File.WriteAllBytes(evidence,bytes);
+        }
+        using var verify=Launch(path,"vm-smoke-verify",phase);
+        try
+        {
+            var output=verify.StandardOutput.ReadToEndAsync(deadline.Token);var error=verify.StandardError.ReadToEndAsync(deadline.Token);
+            await verify.WaitForExitAsync(deadline.Token);
+            Assert.Equal(corruptEvidence?2:0,verify.ExitCode);
+            if(corruptEvidence) {Assert.DoesNotContain("PASS",await output);Assert.Contains("preserve evidence",await error);}
+            else {Assert.Contains(baseline!,await output);Assert.Contains("PASS: guest-local VM smoke "+phase,await output);Assert.Equal("",await error);}
+        }
+        finally {if(!verify.HasExited) {verify.Kill(true);verify.WaitForExit();}}
+    }
     [Fact]
     public async Task ActualHostKillLeavesOldGenerationAndGuestRefusesPublication()
     {

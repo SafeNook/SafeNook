@@ -6,6 +6,7 @@ using SafeNook.Storage;
 if(!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
 if(args.Length>1 && args[1]=="verify-crash-backup") { using var checkedStore=QualificationStore.Open(Path.GetFullPath(args[0]),CredentialKind.Recovery,Enumerable.Range(128,32).Select(value=>(byte)value).ToArray(),new(65536,536870912),default); QualificationStore.VerifyPortable(Path.GetFullPath(args[0])+".snbak",CredentialKind.Recovery,Enumerable.Range(128,32).Select(value=>(byte)value).ToArray(),new(65536,536870912),default); Console.WriteLine("PASS: native crash backup fully authenticated."); return; }
 if(args.Length>1 && args[1]=="crash") { CrashCampaign.Run(args); return; }
+if(args.Length>1 && args[1]=="vm-smoke-verify") { OracleIntegration.VerifySmoke(args); return; }
 if(args.Length>1 && args[1]=="oracle") { OracleIntegration.Run(args).GetAwaiter().GetResult(); return; }
 if(args.Length>1 && args[1]=="oracle-guest") { OracleIntegration.Guest(args).GetAwaiter().GetResult(); return; }
 // Only synthetic fixture credentials are accepted; no qualification entry point exists in nook.

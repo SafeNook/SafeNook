@@ -26,7 +26,7 @@ internal static class OracleIntegration
         internal byte[] Digests=>WrapperHash.Concat(HeaderHash).Concat(ArchiveHash).ToArray();
     }
     // This independently authenticates all active objects. Open and VerifyPortable include AllBlobs.
-    private static Snapshot Inspect(string path,Operation op,byte[] original,byte[] recovery,Dictionary<string,byte[]> immutable,CancellationToken token)
+    private static Snapshot Inspect(string path,Operation op,byte[] original,byte[] recovery,Dictionary<string,byte[]> immutable,CancellationToken token,bool baselineOnly=false)
     {
         if(op==Operation.Verify)
         {
@@ -36,7 +36,7 @@ internal static class OracleIntegration
             pinned.Position=0;Require(Convert.ToHexStringLower(SHA256.HashData(pinned))==raw);
             pinned.Position=0;return new(archive.Header,new byte[32],Wire.Digest(2,archive.Header),Wire.ArchiveDigest(pinned,token).GetAwaiter().GetResult(),new byte[32].Concat(SHA256.HashData(archive.Header)).Concat(Convert.FromHexString(raw)).ToArray());
         }
-        var target=Target(path,op);var password=op is Operation.Password or Operation.Recover?NewPassword():GenerationFixture.Password.ToArray();
+        var target=Target(path,op);var password=!baselineOnly && op is Operation.Password or Operation.Recover?NewPassword():GenerationFixture.Password.ToArray();
         try
         {
             byte[] header,wrapper;
@@ -59,9 +59,9 @@ internal static class OracleIntegration
             using(var reopened=QualificationStore.Open(target,CredentialKind.Recovery,recovery,GenerationFixture.Policy(),token))
                 Require(reopened.Header.AsSpan().SequenceEqual(header));
             var before=BinaryPrimitives.ReadUInt64LittleEndian(original.AsSpan(60));
-            Require(BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(60))==before+(Changes(op)?1ul:0ul));
+            Require(BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(60))==before+(Changes(op) && !baselineOnly?1ul:0ul));
             Require(header.AsSpan(12,32).SequenceEqual(original.AsSpan(12,32)));
-            if(Changes(op))
+            if(Changes(op) && !baselineOnly)
             {
                 Require(!header.AsSpan(44,16).SequenceEqual(original.AsSpan(44,16)));
                 Require(header.AsSpan(68,32).SequenceEqual(SHA256.HashData(original)));
@@ -133,7 +133,7 @@ internal static class OracleIntegration
     }
     internal static async Task Guest(string[] args)
     {
-        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(50));
+        using var deadline=new CancellationTokenSource(args.Length==7 && args[6]=="vm-smoke"?TimeSpan.FromMinutes(30):TimeSpan.FromSeconds(50));
         try
         {
             var path=Path.GetFullPath(args[0]);var op=Enum.Parse<Operation>(args[2]);var run=Guid.ParseExact(args[4],"N");var scenario=args[5];
@@ -184,17 +184,24 @@ internal static class OracleIntegration
     }
     internal static async Task Run(string[] args)
     {
-        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(70));
+        var vmSmoke=args.Length==4 && args[3] is "vm-pre" or "vm-post" or "vm-ack";
+        using var deadline=new CancellationTokenSource(vmSmoke?TimeSpan.FromMinutes(30):TimeSpan.FromSeconds(70));
         var nextRecovery=new byte[32];Process? child=null;
         try
         {
-            var path=Path.GetFullPath(args[0]);var op=Enum.Parse<Operation>(args[2]);var scenario=args[3];
+            var path=Path.GetFullPath(args[0]);var op=Enum.Parse<Operation>(args[2]);var scenario=vmSmoke?(args[3]=="vm-ack"?"success":args[3][3..]):args[3];
+            Require(!vmSmoke || op==Operation.Password);
             Require(!Directory.Exists(path));Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             using var fixture=new GenerationFixture();OldRecovery().CopyTo(fixture.Recovery.Span);
             using(var store=QualificationStore.Create(path,fixture.Initial(),GenerationFixture.Password,fixture.Recovery.Span,()=>fixture.Recovery.Span.ToArray(),GenerationFixture.Policy(),new NoStoreFaults(),deadline.Token))
                 Require(store.Commit(fixture.Next(store.Header,includeBlob:true,blobBytes:"synthetic private blob sentinel - never in evidence"u8.ToArray()),CredentialKind.Password,GenerationFixture.Password,[],null,new NoStoreFaults(),deadline.Token).Outcome==CommitOutcome.Committed);
             using(var ui=new Interaction(null,"success"))
                 if(op is Operation.Verify or Operation.Restore) VaultApplication.ForQualification(ui,GenerationFixture.Policy()).Backup(path,path+".snbak",token:deadline.Token);
+            if(vmSmoke)
+            {
+                using var baselineUi=new Interaction(null,"success");
+                VaultApplication.ForQualification(baselineUi,GenerationFixture.Policy()).Backup(path,path+".baseline.snbak",token:deadline.Token);
+            }
             var original=VaultFormat.DecodeWrapper(File.ReadAllBytes(Path.Combine(path,"vault.json")));
             var immutable=Directory.GetFiles(Path.Combine(path,"items")).Concat(Directory.GetFiles(Path.Combine(path,"blobs"))).ToDictionary(f=>f,SHA256File);
             if(scenario=="corrupt")
@@ -218,6 +225,7 @@ internal static class OracleIntegration
             using var observer=new Observer(run,op,evidence);
             var info=new ProcessStartInfo(Environment.ProcessPath!){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
             foreach(var arg in new[]{path,"oracle-guest",op.ToString(),name,run.ToString("N"),scenario}) info.ArgumentList.Add(arg);
+            if(vmSmoke) info.ArgumentList.Add("vm-smoke");
             child=Process.Start(info)!;await pipe.WaitForConnectionAsync(deadline.Token);
             Frame? ack=null;bool stopped=false;bool receivedKey=false;bool rejected=false;
             try
@@ -264,6 +272,15 @@ internal static class OracleIntegration
             {
                 Require(await child.StandardOutput.ReadLineAsync(deadline.Token)==(scenario=="indeterminate"?"INDETERMINATE":"REFUSED"));
                 await child.WaitForExitAsync(deadline.Token);Require(child.ExitCode==2);
+            }
+            if(vmSmoke)
+            {
+                var phase=scenario=="success"?"ack":scenario;
+                var hash=ack is null?Convert.ToHexStringLower(SHA256.HashData(original)):Convert.ToHexStringLower(ack.Digests);
+                Console.WriteLine("BASELINE-SHA256 "+Convert.ToHexStringLower(SHA256File(path+".baseline.snbak")));
+                Console.WriteLine("VM-READY "+phase+" "+hash);Console.Out.Flush();
+                // Deliberately keep guest and observer alive. No automatic poweroff or retry.
+                await Task.Delay(Timeout.Infinite,deadline.Token);
             }
             if(!child.HasExited) {child.Kill(true);await child.WaitForExitAsync(deadline.Token);}
             Require(child.ExitCode!=0);Require(await child.StandardError.ReadToEndAsync(deadline.Token)=="");
@@ -321,6 +338,34 @@ internal static class OracleIntegration
             if(child is not null) {if(!child.HasExited) {child.Kill(true);child.WaitForExit();}child.Dispose();}
             CryptographicOperations.ZeroMemory(nextRecovery);
         }
+    }
+    internal static void VerifySmoke(string[] args)
+    {
+        try
+        {
+            Require(args.Length==3 && args[2] is "pre" or "post" or "ack");
+            var path=Path.GetFullPath(args[0]);using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            using var baseline=new FileStream(path+".baseline.snbak",FileMode.Open,FileAccess.Read,FileShare.Read);
+            QualificationStore.VerifyPortable(path+".baseline.snbak",CredentialKind.Recovery,OldRecovery(),GenerationFixture.Policy(),deadline.Token);
+            var archive=new BackupArchive(baseline,deadline.Token);var immutable=new Dictionary<string,byte[]>();
+            foreach(var entry in archive.Entries.Keys.Where(e=>e.Kind is 1 or 2))
+                immutable.Add(Path.Combine(path,entry.Kind==1?"items":"blobs",entry.Write+(entry.Kind==1?".item":".blob")),SHA256.HashData(archive.Object(entry,deadline.Token)));
+            var state=Inspect(path,Operation.Password,archive.Header,OldRecovery(),immutable,deadline.Token,baselineOnly:args[2]=="pre");
+            if(args[2]=="ack")
+            {
+                var bytes=File.ReadAllBytes(Path.Combine(path+".oracle","events.bin"));Require(bytes.Length>0 && bytes.Length%Frame.Size==0);
+                var frames=Enumerable.Range(0,bytes.Length/Frame.Size).Select(i=>Frame.Decode(bytes.AsSpan(i*Frame.Size,Frame.Size).ToArray())).ToArray();
+                Require(frames.All(f=>f.Kind==FrameKind.Event && f.Operation==Operation.Password && f.Run==frames[0].Run));
+                Require(frames[^1].Boundary==Boundary.End);
+                var ack=frames.Single(f=>f.Boundary==Boundary.Ack);
+                Require(ack.Generation==state.Sequence && ack.Digests.AsSpan().SequenceEqual(state.Digests));
+                Require(File.ReadAllBytes(Path.Combine(path+".oracle","raw-sha256.bin")).AsSpan().SequenceEqual(state.RawDigests));
+            }
+            Console.WriteLine("BASELINE-SHA256 "+Convert.ToHexStringLower(SHA256File(path+".baseline.snbak")));
+            Console.WriteLine("STATE-DOMAIN-HASHES "+Convert.ToHexStringLower(state.Digests));
+            Console.WriteLine("PASS: guest-local VM smoke "+args[2]+"; full authentication; sequence "+state.Sequence);
+        }
+        catch {Console.Error.WriteLine("VM smoke verification refused; preserve evidence, no rollback or retry.");Environment.ExitCode=2;}
     }
     private static byte[] SHA256File(string path) {using var stream=File.OpenRead(path);return SHA256.HashData(stream);}
 }

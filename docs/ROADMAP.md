@@ -291,3 +291,26 @@ production writes и GC закрыты.
 Windows process/pipe qualification использует явный xUnit skip на других ОС; переносимые
 проверки протокола продолжают выполняться. [Отчёт SN-CI-002](SN-CI-002-ORACLE-PLATFORMS.md).
 Зелёный GitHub Actions после публикации изменений ещё требуется подтвердить.
+
+## SN-003Q4 — подготовка safe-nook-base
+
+Проверен независимый base VDI существующей VM; выявлены неизолированные интеграции.
+Подготовлены guest-local pause/reopen smoke-сценарии и guarded poweroff script.
+[Отчёт SN-003Q4](SN-003Q4-SAFE-NOOK-BASE.md). По разрешению владельца VM изолирована,
+read-only preflight пройден; guest deployment и отдельное разрешение poweroff ещё требуются.
+VM не запускалась. Production writes и GC закрыты.
+
+
+## SN-003Q5 — Windows VM durability smoke
+
+На safe-nook-base выполнены три реальных poweroff: BeforePublish сохранил sequence 2,
+AfterPublish — sequence 3, Post-ACK — sequence 3 с точным совпадением хешей ACK.
+Все три гостевые проверки полной аутентификации завершились с exit code 0.
+Windows Release: 0 warnings/errors; MTP 532/532 (discovery 532), managed/native CLI
+165+22 каждый; Native AOT lifecycle и шесть oracle-сценариев прошли.
+[Результаты и ограничения](SN-003Q5-DURABILITY-RESULTS.md): это guest-local smoke,
+не физическая power-loss qualification и не независимый forensic oracle.
+Clipboard разрешён владельцем для ручного ввода; остальные ограничения сохранены.
+Production writes и GC закрыты. Следующая рекомендуемая функциональная задача —
+редактирование login/note через Application/CLI и внутренний harness (завершение CRUD
+M1), затем SSH/age/files для M2. Отдельного разрешения на реализацию пока нет.
