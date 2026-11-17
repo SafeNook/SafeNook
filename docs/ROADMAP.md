@@ -314,3 +314,16 @@ Clipboard разрешён владельцем для ручного ввода
 Production writes и GC закрыты. Следующая рекомендуемая функциональная задача —
 редактирование login/note через Application/CLI и внутренний harness (завершение CRUD
 M1), затем SSH/age/files для M2. Отдельного разрешения на реализацию пока нет.
+
+
+## SN-004A — редактирование login и secure note
+
+Добавлена операция Application.Edit и CLI `nook edit --vault PATH --id ITEM_ID`.
+Явное сохранение/замена полей, повторный ввод секретных значений, новая immutable
+revision с прежним ID и COW commit; отмена и Indeterminate не приводят к retry.
+Публичная запись по-прежнему возвращает exit code 5 до ввода credentials, GC выключен.
+[Реализация и результаты проверок](SN-004A-EDIT-IMPLEMENTATION.md).
+
+Проверки SN-004A: Release без warnings/errors; MTP 558/558, discovery 558;
+managed и Native AOT CLI по 165+27; Native AOT Application lifecycle с edit/reopen,
+credentials и backup/restore прошёл. Linux/macOS в этом этапе не запускались.

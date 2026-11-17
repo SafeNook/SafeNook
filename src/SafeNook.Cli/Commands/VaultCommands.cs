@@ -31,15 +31,18 @@ internal static class VaultCommands
                 catch {error.WriteLine("Backup operation failed.");return 1;}
             });
         }
-        foreach(var name in new[]{"init","ls","show","add","rm","passwd","recover","rotate"})
+        foreach(var name in new[]{"init","ls","show","add","edit","rm","passwd","recover","rotate"})
         {
             var description=name switch { "init"=>"Create a vault (production writes currently disabled).", "ls"=>"List authenticated safe metadata.",
                 "passwd"=>"Change the master password (production writes disabled).", "recover"=>"Recover access using the recovery key (production writes disabled).", "rotate"=>"Replace the recovery key (production writes disabled).",
+                "edit"=>"Edit login/note interactively; omitted fields are preserved (production writes disabled).",
                 "show"=>"Show safe metadata; --reveal explicitly requests login/note secrets.","add"=>"Add a login or note (production writes currently disabled).",_=>"Confirm a tombstone (production writes currently disabled)." };
             var command=new Command(name,description+" Experimental; not qualified for real secrets.");
             var vault=new Option<string>("--vault") {Description="Required absolute path to exactly one vault.",Required=true}; command.Options.Add(vault);
             var id=new Argument<string>("id") {Description="Canonical lowercase 32-character record ID."};
             if(name is "show" or "rm") command.Arguments.Add(id);
+            var editId=new Option<string>("--id") {Required=true,Description="Canonical record ID to edit."};
+            if(name=="edit") command.Options.Add(editId);
             var reveal=new Option<bool>("--reveal") {Description="Explicitly reveal login/note payload on the interactive terminal."};
             if(name=="show") command.Options.Add(reveal);
             var type=new Option<string>("--type") {Description="login or note; payload is prompted without echo.",Required=true};
@@ -54,6 +57,7 @@ internal static class VaultCommands
                         "passwd"=>application.ChangePassword(path,token), "recover"=>application.Recover(path,token), "rotate"=>application.RotateRecovery(path,token),
                         "init"=>application.Init(path,token), "ls"=>application.List(path,token),
                         "show"=>application.Show(path,parsed.GetValue(id)!,parsed.GetValue(reveal),token),
+                        "edit"=>application.Edit(path,parsed.GetValue(editId)!,token),
                         "add"=>application.Add(path,parsed.GetValue(type)!,token),
                         _=>application.Remove(path,parsed.GetValue(id)!,token)
                     };

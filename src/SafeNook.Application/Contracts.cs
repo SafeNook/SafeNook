@@ -1,7 +1,7 @@
 namespace SafeNook.Application;
 
 /// <summary>Fixed prompts; credential data never appears in a prompt identifier.</summary>
-public enum SecretPrompt { Password, NewPassword, Recovery, ConfirmPassword, ConfirmRecovery, Title, Username, LoginPassword, Url, Notes, Note }
+public enum SecretPrompt { Password, NewPassword, Recovery, ConfirmPassword, ConfirmRecovery, Title, Username, LoginPassword, Url, Notes, Note, Urls, Tags, ConfirmLoginPassword, ConfirmNotes, ConfirmNote }
 /// <summary>Only an explicit interactive channel is supported in C1. Returned byte arrays transfer ownership and are wiped by the application.</summary>
 public interface IVaultInteraction
 {
@@ -35,4 +35,11 @@ public sealed class VaultReply(ItemSummary[] items, RevealedItem? revealed = nul
 {
     public ItemSummary[] Items { get; } = items;
     public RevealedItem? Revealed { get; } = revealed;
+}
+
+/// <summary>Edit selection never includes existing values. False preserves the field; empty replacement explicitly clears it.</summary>
+public interface IVaultEditInteraction : IVaultInteraction
+{
+    bool ReplaceField(SecretPrompt field, CancellationToken token);
+    bool ConfirmEdit(CancellationToken token);
 }

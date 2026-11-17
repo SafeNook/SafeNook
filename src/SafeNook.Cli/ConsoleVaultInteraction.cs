@@ -21,11 +21,11 @@ internal sealed class ConsoleSecretTerminal:ISecretTerminal
     }
     public void Write(string text)=>Console.Error.Write(text);
 }
-internal sealed class ConsoleVaultInteraction(ISecretTerminal terminal):IVaultInteraction
+internal sealed class ConsoleVaultInteraction(ISecretTerminal terminal):IVaultEditInteraction
 {
     public bool IsInteractive=>terminal.IsInteractive;
     public byte[] ReadSecret(SecretPrompt prompt,int maximumBytes,CancellationToken token)
-        =>Read(prompt.ToString()+((prompt is SecretPrompt.Note or SecretPrompt.Notes)?" (Ctrl+D ends; Esc cancels): ":": "),maximumBytes,token,prompt is SecretPrompt.Note or SecretPrompt.Notes);
+        =>Read(prompt.ToString()+((prompt is SecretPrompt.Note or SecretPrompt.Notes or SecretPrompt.Urls or SecretPrompt.Tags or SecretPrompt.ConfirmNote or SecretPrompt.ConfirmNotes)?" (Ctrl+D ends; Esc cancels): ":": "),maximumBytes,token,prompt is SecretPrompt.Note or SecretPrompt.Notes or SecretPrompt.Urls or SecretPrompt.Tags or SecretPrompt.ConfirmNote or SecretPrompt.ConfirmNotes);
     internal byte[] Read(string prompt,int maximumBytes,CancellationToken token,bool multiline=false)
     {
         if(!IsInteractive) throw new VaultOperationException(VaultApplicationError.InteractiveRequired);
@@ -57,6 +57,20 @@ internal sealed class ConsoleVaultInteraction(ISecretTerminal terminal):IVaultIn
     {
         if(!IsInteractive) throw new VaultOperationException(VaultApplicationError.InteractiveRequired);
         terminal.Write("Recovery key for vault "+vaultId+". Store separately; terminal recording may capture it.\n"+code+"\nRe-enter the complete key to confirm delivery.\n");
+    }
+    public bool ReplaceField(SecretPrompt field,CancellationToken token)
+        =>Yes("Replace "+field+"? Type yes; Enter keeps existing. Arrays use one value per line; empty replacement clears: ",token);
+    public bool ConfirmEdit(CancellationToken token)=>Yes("Publish edit? Type yes; Enter cancels: ",token);
+    private bool Yes(string prompt,CancellationToken token)
+    {
+        var bytes=Read(prompt,3,token);
+        try
+        {
+            if(bytes.Length==0) return false;
+            if(bytes.AsSpan().SequenceEqual("yes"u8)) return true;
+            throw new VaultOperationException(VaultApplicationError.InvalidArguments);
+        }
+        finally {CryptographicOperations.ZeroMemory(bytes);}
     }
     public bool ConfirmRemoval(string id,CancellationToken token)
     {

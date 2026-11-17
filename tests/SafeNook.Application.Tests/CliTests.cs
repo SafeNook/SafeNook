@@ -23,19 +23,20 @@ public sealed class CliTests
         Assert.Equal(0,Program.Run(["backup","verify","--help"],new VaultApplication(new NoInteraction()),output,error,TestContext.Current.CancellationToken));
     }
     [Theory]
-    [InlineData("init")] [InlineData("add")] [InlineData("rm")] [InlineData("passwd")] [InlineData("recover")] [InlineData("recovery")]
+    [InlineData("edit")] [InlineData("init")] [InlineData("add")] [InlineData("rm")] [InlineData("passwd")] [InlineData("recover")] [InlineData("recovery")]
     public void ProductionWritesRefuseBeforeAnyInteraction(string command)
     {
         var args=new List<string>{command,"--vault",Path.GetFullPath("nonexistent-test-vault")};
         if(command=="recovery") args.Insert(1,"rotate");
         if(command=="add") args.AddRange(["--type","login"]);
+        if(command=="edit") args.AddRange(["--id",new string('a',32)]);
         if(command=="rm") args.Add(new string('a',32));
         using var output=new StringWriter();using var error=new StringWriter();
         var result=Program.Run(args.ToArray(),new VaultApplication(new NoInteraction()),output,error,TestContext.Current.CancellationToken);
         Assert.Equal(5,result);Assert.Equal("",output.ToString());Assert.Contains("disabled",error.ToString());
     }
     [Theory]
-    [InlineData("")] [InlineData("init")] [InlineData("ls")] [InlineData("show")] [InlineData("add")] [InlineData("rm")]
+    [InlineData("edit")] [InlineData("")] [InlineData("init")] [InlineData("ls")] [InlineData("show")] [InlineData("add")] [InlineData("rm")]
     public void HelpNeverRequestsCredentials(string name)
     {
         using var output=new StringWriter(); using var error=new StringWriter();
@@ -84,6 +85,30 @@ public sealed class CliTests
     [Fact]
     public void MetadataEscapesTerminalControls()
     { Assert.Equal("title\\u001B[2J\\u000A\\u202E",VaultCommands.Escape("title\u001b[2J\n\u202e")); }
+    [Theory]
+    [InlineData("--password")] [InlineData("--note")] [InlineData("--type")]
+    public void EditRejectsPayloadArguments(string option)
+    {
+        using var output=new StringWriter();using var error=new StringWriter();
+        Assert.Equal(1,Program.Run(["edit","--vault","C:\\synthetic","--id",new string('a',32),option,"DO_NOT_ECHO"],new VaultApplication(new NoInteraction()),output,error,TestContext.Current.CancellationToken));
+        Assert.DoesNotContain("DO_NOT_ECHO",output.ToString()+error);
+    }
+    [Fact]
+    public void EditRequiresNamedId()
+    {
+        using var output=new StringWriter();using var error=new StringWriter();
+        Assert.Equal(1,Program.Run(["edit","--vault","C:\\synthetic"],new VaultApplication(new NoInteraction()),output,error,TestContext.Current.CancellationToken));
+    }
+    [Fact]
+    public void EditChoicesNeverEchoAndDefaultToKeepOrCancel()
+    {
+        var terminal=new Terminal([new('\r',ConsoleKey.Enter,false,false,false),Key('y'),Key('e'),Key('s'),new('\r',ConsoleKey.Enter,false,false,false),new('\r',ConsoleKey.Enter,false,false,false)]);
+        var ui=new ConsoleVaultInteraction(terminal);
+        Assert.False(ui.ReplaceField(SecretPrompt.Password,TestContext.Current.CancellationToken));
+        Assert.True(ui.ReplaceField(SecretPrompt.Note,TestContext.Current.CancellationToken));
+        Assert.False(ui.ConfirmEdit(TestContext.Current.CancellationToken));
+        Assert.All(terminal.Intercepts,Assert.True);
+    }
     private static ConsoleKeyInfo Key(char value)=>new(value,ConsoleKey.A,false,false,false);
     private sealed class NoInteraction:IVaultInteraction
     {

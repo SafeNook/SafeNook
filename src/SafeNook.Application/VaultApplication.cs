@@ -10,7 +10,7 @@ using SafeNook.Storage;
 namespace SafeNook.Application;
 
 /// <summary>User operations. Public construction never grants qualification write access.</summary>
-public sealed class VaultApplication
+public sealed partial class VaultApplication
 {
     private readonly IVaultInteraction _interaction;
     private readonly bool _qualification;
