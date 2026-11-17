@@ -22,12 +22,14 @@ function Invoke-VaultCli([string[]] $Arguments) {
     } finally { $process.Dispose() }
 }
 $vault = Join-Path ([System.IO.Path]::GetTempPath()) ('sn-cli-refused-' + [guid]::NewGuid().ToString('N'))
-foreach ($name in @('init','ls','show','add','rm')) {
+foreach ($name in @('init','ls','show','add','rm','edit')) {
     $help = Invoke-VaultCli @($name,'--help')
     if ($help.Code -ne 0 -or $help.Out -notmatch '--vault') { throw 'Command help contract failed.' }; $checks++
 }
 foreach ($case in @(
     @{ Args=@('init','--vault',$vault); Code=5 },
+    @{ Args=@('edit','--vault',$vault,'--id',('a'*32)); Code=5 },
+    @{ Args=@('edit','--vault',$vault); Code=1 },
     @{ Args=@('add','--vault',$vault,'--type','login'); Code=5 },
     @{ Args=@('rm',('a'*32),'--vault',$vault); Code=5 },
     @{ Args=@('ls','--vault',$vault); Code=6 },

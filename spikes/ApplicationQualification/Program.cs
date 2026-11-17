@@ -18,6 +18,15 @@ var note=application.Add(path,"note").Items.Single();
 if(application.List(path).Items.Length!=2 || application.Show(path,login.Id).Revealed is not null ||
     application.Show(path,login.Id,true).Revealed?.Password!="synthetic login password" || application.Show(path,note.Id,true).Revealed?.Note!=ui.Note)
     throw new InvalidOperationException("Qualification round trip failed.");
+ui.Edits[SecretPrompt.Title]="edited title";
+application.Edit(path,login.Id);
+ui.Edits.Clear();ui.Edits[SecretPrompt.LoginPassword]="synthetic edited password";
+application.Edit(path,login.Id);
+if(application.Show(path,login.Id,true).Revealed?.Password!="synthetic edited password" || application.Show(path,login.Id).Items.Single().Revision!=3) throw new InvalidOperationException("Login edit failed.");
+ui.Edits.Clear();ui.Edits[SecretPrompt.Note]="synthetic edited note";
+application.Edit(path,note.Id);
+if(application.Show(path,note.Id,true).Revealed?.Note!="synthetic edited note") throw new InvalidOperationException("Note edit failed.");
+ui.Edits.Clear();
 application.Remove(path,login.Id);
 if(new VaultApplication(ui).List(path).Items.Length!=1 || StorageSupport.ProductionWritesSupported) throw new InvalidOperationException("Qualification invariant failed.");
 var originalRecovery=ui.Recovery;
@@ -34,4 +43,4 @@ var archive=path+".snbak";var restored=path+"-restored";
 var backupHash=application.Backup(path,archive);
 if(application.VerifyBackup(archive)!=backupHash || application.Restore(archive,restored)!=backupHash || application.List(restored).Items.Length!=1) throw new InvalidOperationException("Backup round trip failed.");
 if(ui.Issued.Any(bytes=>bytes.Any(value=>value!=0))) throw new InvalidOperationException("Owned input was not cleared.");
-Console.WriteLine("PASS: application init/login/note/reveal/tombstone/reopen; owned input cleared; production writes disabled.");
+Console.WriteLine("PASS: application init/login/note/edit/reveal/tombstone/reopen; owned input cleared; production writes disabled.");
