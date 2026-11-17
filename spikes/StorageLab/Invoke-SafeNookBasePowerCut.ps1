@@ -1,4 +1,4 @@
-param([switch] $OwnerApprovedPowerCut,[switch] $InspectOnly)
+param([switch] $OwnerApprovedPowerCut,[switch] $InspectOnly,[switch] $OwnerApprovedClipboardForSmoke)
 # Exact existing VM only. No creation, start, mutation of settings, snapshot or recovery actions.
 $ErrorActionPreference='Stop'
 $vbox='C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
@@ -13,7 +13,14 @@ function Value([string] $key) {
 }
 if((Value 'name') -ne 'safe-nook-base' -or (Value 'UUID') -ne $id) {throw 'Wrong VM identity.'}
 foreach($n in 1..8) {if((Value "nic$n") -ne 'none') {throw 'Network must be disabled before trials.'}}
-if(($info -match '^SharedFolder') -or ($info -match '^USBFilter') -or (Value 'clipboard') -ne 'disabled' -or (Value 'draganddrop') -ne 'disabled') {throw 'Host integrations must be disabled.'}
+if(($info -match '^SharedFolder') -or ($info -match '^USBFilter') -or (Value 'draganddrop') -ne 'disabled') {throw 'Host integrations must be disabled.'}
+# Q5 owner exception for manual synthetic command entry only; never enables clipboard itself.
+$clipboard=Value 'clipboard'
+if($clipboard -ne 'disabled') {
+    if(-not $OwnerApprovedClipboardForSmoke -or $clipboard -notin @('hosttoguest','guesttohost','bidirectional')) {throw 'Clipboard requires an explicit owner-approved smoke exception.'}
+    Write-Warning ('Owner-approved smoke exception: clipboard='+$clipboard+'; not fully isolated qualification.')
+}
+if((Value 'clipboard_file_transfers') -ne 'off') {throw 'Clipboard file transfers must be disabled.'}
 foreach($key in @('usb','ehci','xhci')) {if((Value $key) -ne 'off') {throw 'USB must be disabled.'}}
 foreach($n in 1..4) {if((Value "uart$n") -ne 'off') {throw 'Guest-local smoke requires disabled host UART integrations.'}}
 $media=@($info | Where-Object {$_ -match '^"[^"=]+-ImageUUID-[0-9]+-[0-9]+"='})
