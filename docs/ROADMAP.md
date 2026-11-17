@@ -262,3 +262,12 @@ Production writes и GC закрыты; физические power-cut испы�
 Добавлена отдельная process-kill матрица credentials/backup/restore и post-ACK проверка.
 Подготовлены guarded-сценарии VirtualBox/NTFS без создания VM или изменения quota.
 [Отчёт SN-003D3](SN-003D3-CRASH-QUALIFICATION.md). Production writes и GC закрыты.
+
+## SN-003Q1 — изолированная Windows storage lab
+
+- [x] Подготовить сравнение конфигураций, бюджет, внешний oracle и план испытаний.
+- [ ] Согласовать архитектуру, лицензированную offline-установку и выделенные пути с владельцем.
+- [ ] Отдельно разрешить развёртывание и разрушительные испытания.
+
+[Архитектура SN-003Q1](SN-003Q1-LAB-ARCHITECTURE.md): рекомендуется новая независимая VM;
+VM и диски не созданы, power-cut и quota/full-volume не выполнялись. Production writes и GC закрыты.
