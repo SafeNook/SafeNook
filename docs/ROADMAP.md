@@ -285,3 +285,9 @@ VM и диски не созданы, power-cut и quota/full-volume не вып
 ACK требует повторной полной аутентификации guest и независимой проверки host, включая blobs.
 [Отчёт SN-003Q3](SN-003Q3-ORACLE-INTEGRATION.md). VM и physical power-loss не проверены;
 production writes и GC закрыты.
+
+## SN-CI-002 — платформенная классификация oracle-тестов
+
+Windows process/pipe qualification использует явный xUnit skip на других ОС; переносимые
+проверки протокола продолжают выполняться. [Отчёт SN-CI-002](SN-CI-002-ORACLE-PLATFORMS.md).
+Зелёный GitHub Actions после публикации изменений ещё требуется подтвердить.

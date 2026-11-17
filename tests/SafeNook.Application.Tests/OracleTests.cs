@@ -108,6 +108,7 @@ public sealed class OracleTests
     [Fact]
     public async Task NoReceiptOnFlushFailure()
     {
+        Assert.SkipWhen(!OperatingSystem.IsWindows(), "Windows named-pipe qualification transport only.");
         var run=Guid.NewGuid();var pipeName=Guid.NewGuid().ToString("N");
         using var server=new NamedPipeServerStream(pipeName,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous|PipeOptions.CurrentUserOnly);
         using var client=new NamedPipeClientStream(".",pipeName,PipeDirection.InOut,PipeOptions.Asynchronous);
@@ -138,6 +139,7 @@ public sealed class OracleTests
     [InlineData("denied")] [InlineData("oversized")] [InlineData("disconnect")] [InlineData("timeout")]
     public async Task IndependentHostGuestProcesses(string scenario, Operation operation=Operation.Rotate)
     {
+        Assert.SkipWhen(!OperatingSystem.IsWindows(), "Windows oracle executable, owner-only ACLs and native access probe required.");
         var root=Root();var exe=Path.Combine(root,"spikes","DurabilityOracle","bin","Release","net10.0","DurabilityOracle.exe");
         var path=Path.Combine(root,"artifacts","sn-003q2-"+Guid.NewGuid().ToString("N"));
         var run=Guid.NewGuid().ToString("N");var pipe=Guid.NewGuid().ToString("N");
