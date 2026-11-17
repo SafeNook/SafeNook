@@ -4,6 +4,8 @@ using SafeNook.Core.Vault;
 using SafeNook.Storage;
 
 if(!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+if(args.Length>1 && args[1]=="verify-crash-backup") { using var checkedStore=QualificationStore.Open(Path.GetFullPath(args[0]),CredentialKind.Recovery,Enumerable.Range(128,32).Select(value=>(byte)value).ToArray(),new(65536,536870912),default); QualificationStore.VerifyPortable(Path.GetFullPath(args[0])+".snbak",CredentialKind.Recovery,Enumerable.Range(128,32).Select(value=>(byte)value).ToArray(),new(65536,536870912),default); Console.WriteLine("PASS: native crash backup fully authenticated."); return; }
+if(args.Length>1 && args[1]=="crash") { CrashCampaign.Run(args); return; }
 // Only synthetic fixture credentials are accepted; no qualification entry point exists in nook.
 var path=Path.GetFullPath(args[0]);Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 var ui=new SyntheticInteraction();var application=VaultApplication.ForQualification(ui,new(65536,536870912));

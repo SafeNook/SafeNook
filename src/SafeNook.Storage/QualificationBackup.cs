@@ -21,7 +21,7 @@ internal sealed partial class QualificationStore
     {
         using var parent=new WindowsFileSystem(Path.GetDirectoryName(input)!,false,token,archiveParent:true);
         using var metadata=policy.ReserveTransientBytes(20001L*256);
-        using var stream=parent.OpenArchive(Path.GetFileName(input),false);var archive=new BackupArchive(stream,token);
+        using var stream=parent.OpenArchive(Path.GetFileName(input),false);var archive=new BackupArchive(stream,token,faults);
         VerifyArchive(archive,kind,credential,policy,token);faults?.At(CommitStep.Authenticated);return archive.Hash(token);
     }
     internal string BackupPortable(string output,CredentialKind kind,ReadOnlySpan<byte> credential,IStoreFaults faults,CancellationToken token)
@@ -50,7 +50,7 @@ internal sealed partial class QualificationStore
                     if(_files.Read(entries[i].Kind,entries[i].Write,bytes,token)!=bytes.Length) Fail("changed-length");
                     var frame=new byte[16];frame[0]=entries[i].Kind;BinaryPrimitives.WriteUInt64LittleEndian(frame.AsSpan(8),(ulong)bytes.Length);Write(frame);Write(bytes);
                 }
-                stream.Flush();var archive=new BackupArchive(stream,token);VerifyArchive(archive,kind,credential,_policy,token);var hash=archive.Hash(token);
+                stream.Flush();var archive=new BackupArchive(stream,token,faults);VerifyArchive(archive,kind,credential,_policy,token);var hash=archive.Hash(token);
                 if(!_files.ReadRoot(token).AsSpan().SequenceEqual(_header)) Fail("source-changed");_files.ValidateNamespace();
                 faults.BeforeFlush(false);stream.Flush(true);faults.At(CommitStep.BeforePublish);token.ThrowIfCancellationRequested();attempted=true;
                 parent.PublishArchive(stream,Path.GetFileName(output),faults);faults.At(CommitStep.AfterPublish);
@@ -67,7 +67,7 @@ internal sealed partial class QualificationStore
         {
             using var parent=new WindowsFileSystem(Path.GetDirectoryName(input)!,false,token,archiveParent:true);
             using var metadata=policy.ReserveTransientBytes(20001L*256);
-            using var stream=parent.OpenArchive(Path.GetFileName(input),false);var archive=new BackupArchive(stream,token);
+            using var stream=parent.OpenArchive(Path.GetFileName(input),false);var archive=new BackupArchive(stream,token,faults);
             var manifest=VerifyArchive(archive,kind,credential,policy,token);var hash=archive.Hash(token);faults.At(CommitStep.Authenticated);faults.At(CommitStep.Validated);
             using var files=new WindowsFileSystem(destination,true,token);
             foreach(var entry in archive.Entries)

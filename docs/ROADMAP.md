@@ -256,3 +256,9 @@ ADR 0010 принят владельцем. Реализованы SNBACKUP v1, 
 Расширена матрица отказов credentials/backup/verify/restore, исправлена классификация
 resource failures. [Отчёт SN-003D2](SN-003D2-FAULT-QUALIFICATION.md).
 Production writes и GC закрыты; физические power-cut испытания не выполнены.
+
+## SN-003D3 — process crash и storage lab
+
+Добавлена отдельная process-kill матрица credentials/backup/restore и post-ACK проверка.
+Подготовлены guarded-сценарии VirtualBox/NTFS без создания VM или изменения quota.
+[Отчёт SN-003D3](SN-003D3-CRASH-QUALIFICATION.md). Production writes и GC закрыты.
