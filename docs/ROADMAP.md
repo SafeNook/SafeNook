@@ -327,3 +327,16 @@ revision с прежним ID и COW commit; отмена и Indeterminate не 
 Проверки SN-004A: Release без warnings/errors; MTP 558/558, discovery 558;
 managed и Native AOT CLI по 165+27; Native AOT Application lifecycle с edit/reopen,
 credentials и backup/restore прошёл. Linux/macOS в этом этапе не запускались.
+
+
+## SN-004B — файлы и opaque SSH/age
+
+Реализованы Application/CLI import/extract с существующими encrypted blobs и COW.
+Владелец разрешил private plaintext staging только для явного внешнего экспорта;
+каталог назначения требует owner-only ACL, публикация no-replace, неопределённость
+не вызывает retry. Production writes и GC закрыты.
+[Контракты, проверки и остаточные риски](SN-004B-FILE-SSH-AGE.md).
+
+SN-004B проверен на Windows x64: Release без warnings/errors; полный MTP 582/582,
+discovery 582; managed/native CLI по 165+27; Native AOT lifecycle с file/SSH/age
+round-trip прошёл. Linux/macOS и физические сбои не квалифицированы этим этапом.

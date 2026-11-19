@@ -21,7 +21,7 @@ internal sealed class ConsoleSecretTerminal:ISecretTerminal
     }
     public void Write(string text)=>Console.Error.Write(text);
 }
-internal sealed class ConsoleVaultInteraction(ISecretTerminal terminal):IVaultEditInteraction
+internal sealed class ConsoleVaultInteraction(ISecretTerminal terminal):IVaultEditInteraction,IVaultFileInteraction
 {
     public bool IsInteractive=>terminal.IsInteractive;
     public byte[] ReadSecret(SecretPrompt prompt,int maximumBytes,CancellationToken token)
@@ -60,6 +60,7 @@ internal sealed class ConsoleVaultInteraction(ISecretTerminal terminal):IVaultEd
     }
     public bool ReplaceField(SecretPrompt field,CancellationToken token)
         =>Yes("Replace "+field+"? Type yes; Enter keeps existing. Arrays use one value per line; empty replacement clears: ",token);
+    public bool ConfirmUnvalidatedKey(bool age,CancellationToken token)=>Yes("Store unvalidated "+(age?"age identity":"SSH key")+" bytes? No usability or companion-match check. Type yes: ",token);
     public bool ConfirmEdit(CancellationToken token)=>Yes("Publish edit? Type yes; Enter cancels: ",token);
     private bool Yes(string prompt,CancellationToken token)
     {

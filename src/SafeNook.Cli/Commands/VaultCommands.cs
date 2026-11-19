@@ -9,6 +9,48 @@ internal static class VaultCommands
 {
     internal static void AddTo(RootCommand root,VaultApplication application,TextWriter output,TextWriter error,CancellationToken token)
     {
+        foreach(var kind in new[]{"file","ssh","age"})
+        {
+            var group=new Command(kind,"Opaque byte storage; SSH/age imports are unvalidated and are not checked for usability or matching companions.");root.Subcommands.Add(group);
+            foreach(var importing in new[]{true,false})
+            {
+                var command=new Command(importing?"add":"extract","Explicit file operation; production writes disabled.");group.Subcommands.Add(command);
+                var vault=new Option<string>("--vault"){Required=true};var input=new Option<string>("--input"){Required=true};
+                var id=new Option<string>("--id"){Required=true};var outputFile=new Option<string>("--output"){Required=kind=="file"};
+                var publicInput=new Option<string>(kind=="ssh"?"--public-input":"--recipient-input");
+                var publicOutput=new Option<string>(kind=="ssh"?"--public-output":"--recipient-output");
+                command.Options.Add(vault);
+                if(importing) {command.Options.Add(input);if(kind!="file") command.Options.Add(publicInput);}
+                else {command.Options.Add(id);command.Options.Add(outputFile);if(kind!="file") command.Options.Add(publicOutput);}
+                command.SetAction(parsed=>
+                {
+                    try
+                    {
+                        var path=parsed.GetValue(vault)!;
+                        if(importing)
+                        {
+                            var source=parsed.GetValue(input)!;var companion=parsed.GetValue(publicInput);
+                            var reply=kind switch {"file"=>application.ImportFile(path,source,token),"ssh"=>application.ImportSshKey(path,source,companion,token),_=>application.ImportAgeIdentity(path,source,companion,token)};
+                            output.WriteLine(reply.Items.Single().Id);
+                        }
+                        else
+                        {
+                            var primary=parsed.GetValue(outputFile);var secondary=parsed.GetValue(publicOutput);
+                            // Each command publishes exactly one file; no false multi-file atomicity claim.
+                            if((primary is null)==(secondary is null)) throw new VaultOperationException(VaultApplicationError.InvalidArguments);
+                            var target=primary??secondary!;var item=parsed.GetValue(id)!;
+                            if(kind=="file") application.ExportFile(path,item,target,token);
+                            else if(kind=="ssh") application.ExportSshKey(path,item,target,secondary is not null,token);
+                            else application.ExportAgeIdentity(path,item,target,secondary is not null,token);
+                            output.WriteLine("ok");
+                        }
+                        return 0;
+                    }
+                    catch(VaultOperationException e) {var (code,message)=Failure(e.Error);error.WriteLine(message);return code;}
+                    catch {error.WriteLine("File operation failed.");return 1;}
+                });
+            }
+        }
         var backup=new Command("backup","Create an encrypted backup (writes disabled).");
         var verify=new Command("verify","Fully authenticate a backup, including all blobs.");
         var restore=new Command("restore","Restore into a new vault (writes disabled).");

@@ -109,6 +109,14 @@ public sealed class CliTests
         Assert.False(ui.ConfirmEdit(TestContext.Current.CancellationToken));
         Assert.All(terminal.Intercepts,Assert.True);
     }
+    [Theory] [InlineData("file")] [InlineData("ssh")] [InlineData("age")]
+    public void FileCommandsGateBeforeCredentials(string kind)
+    {
+        using var output=new StringWriter();using var error=new StringWriter();var app=new VaultApplication(new NoInteraction());
+        Assert.Equal(5,Program.Run([kind,"add","--vault","C:\\vault","--input","C:\\input"],app,output,error,TestContext.Current.CancellationToken));
+        Assert.Equal(5,Program.Run([kind,"extract","--vault","C:\\vault","--id",new string('a',32),"--output","C:\\output"],app,output,error,TestContext.Current.CancellationToken));
+        Assert.Equal("",output.ToString());
+    }
     private static ConsoleKeyInfo Key(char value)=>new(value,ConsoleKey.A,false,false,false);
     private sealed class NoInteraction:IVaultInteraction
     {

@@ -4,8 +4,9 @@ using SafeNook.Application;
 namespace SafeNook.ApplicationTestData;
 
 // Synthetic test data only; never accepts real credentials or logs returned values.
-internal sealed class SyntheticInteraction:IVaultEditInteraction
+internal sealed class SyntheticInteraction:IVaultEditInteraction,IVaultFileInteraction
 {
+    public bool ConfirmUnvalidatedKey(bool age,CancellationToken token) {token.ThrowIfCancellationRequested();return ConfirmChanges;}
     internal Dictionary<SecretPrompt,string> Edits {get;}=[];
     internal bool ConfirmChanges {get;set;}=true;
     internal bool ConfirmSecrets {get;set;}=true;
