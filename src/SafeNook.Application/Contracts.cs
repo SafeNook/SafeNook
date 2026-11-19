@@ -43,3 +43,9 @@ public interface IVaultEditInteraction : IVaultInteraction
     bool ReplaceField(SecretPrompt field, CancellationToken token);
     bool ConfirmEdit(CancellationToken token);
 }
+
+/// <summary>Explicit acknowledgement of opaque, unvalidated SSH/age storage; never receives key contents.</summary>
+public interface IVaultFileInteraction : IVaultInteraction
+{
+    bool ConfirmUnvalidatedKey(bool age, CancellationToken token);
+}

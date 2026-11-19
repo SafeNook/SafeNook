@@ -9,7 +9,7 @@ namespace SafeNook.Storage;
 
 /// <summary>Qualification-only Windows/NTFS adapter. All child opens/renames are relative to pinned directory handles.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed unsafe class WindowsFileSystem : IVaultObjectSource, IDisposable
+internal sealed unsafe partial class WindowsFileSystem : IVaultObjectSource, IDisposable
 {
     private readonly List<SafeFileHandle> _pinned = [];
     private readonly Dictionary<string, SafeFileHandle> _directories = new(StringComparer.Ordinal);

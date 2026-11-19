@@ -43,4 +43,22 @@ var archive=path+".snbak";var restored=path+"-restored";
 var backupHash=application.Backup(path,archive);
 if(application.VerifyBackup(archive)!=backupHash || application.Restore(archive,restored)!=backupHash || application.List(restored).Items.Length!=1) throw new InvalidOperationException("Backup round trip failed.");
 if(ui.Issued.Any(bytes=>bytes.Any(value=>value!=0))) throw new InvalidOperationException("Owned input was not cleared.");
-Console.WriteLine("PASS: application init/login/note/edit/reveal/tombstone/reopen; owned input cleared; production writes disabled.");
+// Explicit synthetic source/output fixtures in a separate owner-private directory.
+var io=path+"-external";Directory.CreateDirectory(io);
+using(var identity=System.Security.Principal.WindowsIdentity.GetCurrent())
+{
+    var acl=new System.Security.AccessControl.DirectorySecurity();acl.SetOwner(identity.User!);acl.SetAccessRuleProtection(true,false);
+    acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(identity.User!,System.Security.AccessControl.FileSystemRights.FullControl,System.Security.AccessControl.AccessControlType.Allow));
+    System.IO.FileSystemAclExtensions.SetAccessControl(new DirectoryInfo(io),acl);
+}
+var source=Path.Combine(io,"synthetic-input");File.WriteAllBytes(source,[0,255,13,10,239,187,191]);
+foreach(var kind in new[]{5,3,4})
+{
+    var imported=(kind==5?application.ImportFile(path,source):kind==3?application.ImportSshKey(path,source,source):application.ImportAgeIdentity(path,source,source)).Items.Single();
+    var output=Path.Combine(io,"synthetic-output-"+kind);
+    if(kind==5) application.ExportFile(path,imported.Id,output);
+    else if(kind==3) application.ExportSshKey(path,imported.Id,output);
+    else application.ExportAgeIdentity(path,imported.Id,output);
+    if(!File.ReadAllBytes(source).AsSpan().SequenceEqual(File.ReadAllBytes(output))) throw new InvalidOperationException("Opaque round trip failed.");
+}
+Console.WriteLine("PASS: application init/login/note/edit/file/ssh/age/reveal/tombstone/reopen; owned input cleared; production writes disabled.");

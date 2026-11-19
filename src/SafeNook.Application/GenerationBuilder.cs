@@ -17,7 +17,7 @@ internal static class GenerationBuilder
             header=KeySlots.CreateHeader(Prefix(manifest,encrypted),key,password,recovery,65536,3,policy.KdfMemoryKiB,token);
         return new(header,[encrypted]);
     }
-    internal static EncryptedGeneration Change(byte[] oldHeader, ManifestDto old, ReadOnlySpan<byte> key, ItemDocument item, CancellationToken token)
+    internal static EncryptedGeneration Change(byte[] oldHeader, ManifestDto old, ReadOnlySpan<byte> key, ItemDocument item, CancellationToken token, ObjectReference[]? addedBlobs=null, byte[][]? blobFiles=null)
     {
         var plaintext=VaultPayloadJson.WriteItem(item); byte[] encrypted;
         try { encrypted=ObjectCodec.Encrypt(key,new(Guid.ParseExact(old.VaultId,"N"),Guid.ParseExact(old.EpochId,"N"),Guid.ParseExact(item.Fields.Id,"N"),1,item.Fields.Type),plaintext,131072,token); }
@@ -26,9 +26,9 @@ internal static class GenerationBuilder
             Length=(ulong)(encrypted.Length-134),Sha256=Convert.ToHexStringLower(SHA256.HashData(encrypted)) };
         var manifest=new ManifestDto { Schema=1,VaultId=old.VaultId,EpochId=old.EpochId,GenerationId=VaultFormat.NewId().ToString("N"),
             Sequence=checked(old.Sequence+1),ParentHeaderHash=Convert.ToHexStringLower(SHA256.HashData(oldHeader)),
-            Items=old.Items.Where(r=>r.Id!=reference.Id).Append(reference).OrderBy(r=>r.Id,StringComparer.Ordinal).ToArray(),Blobs=old.Blobs };
+            Items=old.Items.Where(r=>r.Id!=reference.Id).Append(reference).OrderBy(r=>r.Id,StringComparer.Ordinal).ToArray(),Blobs=old.Blobs.Concat(addedBlobs??[]).OrderBy(r=>r.Id,StringComparer.Ordinal).ToArray() };
         var manifestFile=EncryptManifest(manifest,key,token);
-        return new(KeySlots.AdvanceHeader(oldHeader,Prefix(manifest,manifestFile),key),[encrypted,manifestFile]);
+        return new(KeySlots.AdvanceHeader(oldHeader,Prefix(manifest,manifestFile),key),[encrypted,manifestFile,..blobFiles??[]]);
     }
     internal static EncryptedGeneration Credentials(byte[] header,ManifestDto old,ReadOnlySpan<byte> key,ReadOnlySpan<byte> replacement,bool recovery,VaultAdmissionPolicy policy,CancellationToken token)
     {
