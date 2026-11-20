@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsAotCompatible>true</IsAotCompatible><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
   <ItemGroup><ProjectReference Include="../SafeNook.Storage/SafeNook.Storage.csproj" /></ItemGroup>
-  <ItemGroup><InternalsVisibleTo Include="SafeNook.Application.Tests" /><InternalsVisibleTo Include="ApplicationQualification" /></ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="SafeNook.Application.Tests" /><InternalsVisibleTo Include="ApplicationQualification" /><InternalsVisibleTo Include="nook-preview" /></ItemGroup>
 </Project>

@@ -17,6 +17,7 @@
     <ProjectReference Include="..\SafeNook.Core\SafeNook.Core.csproj" />
     <ProjectReference Include="../SafeNook.Application/SafeNook.Application.csproj" />
     <InternalsVisibleTo Include="SafeNook.Application.Tests" />
+    <InternalsVisibleTo Include="nook-preview" />
   </ItemGroup>
 
 </Project>

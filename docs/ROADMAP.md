@@ -340,3 +340,16 @@ credentials и backup/restore прошёл. Linux/macOS в этом этапе �
 SN-004B проверен на Windows x64: Release без warnings/errors; полный MTP 582/582,
 discovery 582; managed/native CLI по 165+27; Native AOT lifecycle с file/SSH/age
 round-trip прошёл. Linux/macOS и физические сбои не квалифицированы этим этапом.
+
+
+## SN-005A — интерактивный Windows Preview
+
+Отдельный explicit-build проект spikes/SafeNook.Preview и nook-preview.exe используют
+настоящие CLI prompts/Application/Storage с внутренним qualification доступом.
+Обычный nook.exe по-прежнему возвращает exit 5 для записи; production gate и GC закрыты.
+Выполнен реальный Windows 11 x64 PTY smoke: init/CRUD, credentials, backup/restore и
+file/SSH/age exact-byte round-trip. Preview не включён в solution/release artifacts.
+[Сборка, команды и ограничения](SN-005A-WINDOWS-PREVIEW.md). Только синтетические данные.
+
+SN-005A: Release/managed Preview и Native AOT собраны без warnings/errors; MTP 582/582,
+discovery 582; managed/native boundary smoke 23 каждый; обычный CLI 165+27 каждый.
